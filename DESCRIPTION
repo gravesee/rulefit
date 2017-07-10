@@ -10,6 +10,6 @@ Description: RuleFit uses an existing tree ensemble model as its input
     on these rules to produce a simpler model without sacrificing much, if any,
     performance.
 License: Proprietary
-Depends: gbm, glmnet
+Depends: gbm, glmnet, digest
 Encoding: UTF-8
 LazyData: true

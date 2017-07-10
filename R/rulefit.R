@@ -80,7 +80,7 @@ get_lineage <- function(mod, tree, child) {
   dir <- c(-1, 1, 0)
 
   ## recurse
-  c(list(node_generator(mod, t, p, child, d = 1, dir[d])),
+  c(list(node_generator(mod, t, p, child, dir[d])),
     get_lineage(mod, tree, p))
 }
 
@@ -174,6 +174,15 @@ rulefit_to_sas <- function(rf, pfx, ...) {
 
   rules <- lapply(K, function(k) get_lineage(rf$gbm_model, k[1], k[2]))
 
+  ## Logic to dedup rules...
+
+  ### MAKE THIS OPTIONAL ?
+  hashes <- sapply(rules, function(x) digest::sha1(as.character(x)))
+  coefs <- c(coefs[1], sapply(split(coefs[-1][coefs[-1] != 0], hashes), sum))
+
+  rules <- sapply(split(rules, hashes), head, 1)
+
+
   node_code <- lapply(seq_along(rules), function(i) {
 
     rule_code <- lapply(rev(rules[[i]]), rule_fit)
@@ -186,8 +195,8 @@ rulefit_to_sas <- function(rf, pfx, ...) {
   code <- c("/*** Rule Definitions ***/\n", unlist(node_code))
   code <- c(code, "\n/*** Model Equation ***/\n")
   code <- c(code, c(sprintf("%s_rule_fit_model = % 03.10f +", pfx, coefs[1])))
-  code <- c(code, paste(sprintf("  %s_rule_%03d * % 03.10f", pfx, seq_along(node_ids),
-    coefs[-1][coefs[-1] != 0]), collapse=" +\n"), ";")
+  code <- c(code, paste(sprintf("  %s_rule_%03d * % 03.10f", pfx, seq_along(rules),
+    coefs[-1]), collapse=" +\n"), ";")
 
   code
 }

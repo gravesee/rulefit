@@ -1,5 +1,5 @@
 ## a little class to encapsulate node info
-node_generator <- function(mod, tree, p, c, d, dir, ...) {
+node_generator <- function(mod, tree, p, c, dir, ...) {
   var_id <- tree[[1]][p] + 1 # variable position (+1 because its zero indexed)
   var_levels <- mod$var.levels[[var_id]]
 
@@ -19,9 +19,7 @@ node_generator <- function(mod, tree, p, c, d, dir, ...) {
     list(
       name   = mod$var.names[var_id],
       value  = value,
-      depth  = d,
-      dir    = dir,
-      update = if (tree[[8]][c] != 0 && tree[[1]][c] == -1) tree[[8]][c] else NA),
+      dir    = dir),
     class = paste0("node_", type))
 }
 
