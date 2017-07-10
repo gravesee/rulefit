@@ -1,0 +1,15 @@
+Package: rulefit
+Type: Package
+Title: Create a Simple Combination of Rules From a Tree Ensemble
+Version: 0.1.0
+Author: Eric E Graves
+Maintainer: Eric E Graves <eric.graves@lexisnexisrisk.com>
+Description: RuleFit uses an existing tree ensemble model as its input
+    predictors. It first converts the ensemble into a series of rules
+    corresponding to terminal nodes. It then fits a regularized regression model
+    on these rules to produce a simpler model without sacrificing much, if any,
+    performance.
+License: Proprietary
+Depends: gbm, glmnet
+Encoding: UTF-8
+LazyData: true
