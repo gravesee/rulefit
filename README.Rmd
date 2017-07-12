@@ -19,34 +19,75 @@ devtools::install_git("https://GravesEE@gitlab.ins.risk.regn.net/minneapolis-r-p
 
 ## Usage
 
-### Training
+### Creating a RuleFit Model
 
-```{r train, warning=FALSE}
+A RuleFit model uses a tree ensemble to generate its rules. As such, a tree 
+ensemble model must be provided to the rulefit function. This funciton returns
+a RuleFit object which can be used to mine rules and train rule ensembles.
 
-# mod <- gbm(Survived~., data=titanic, distribution="bernoulli",
-#   interaction.depth=3, shrinkage=0.1)
+```{r constructor, warning=FALSE}
 
 mod <- gbm.fit(titanic[-1], titanic$Survived, distribution="bernoulli",
   interaction.depth=3, shrinkage=0.1, verbose = FALSE)
 
-rf <- RuleFit(mod, titanic[-1])
+rf <- rulefit(mod)
 
-print(rf)
+class(rf)
+```
+
+### Training
+
+Training a RuleFit model is as easy as calling the train method. This is a
+Reference Class object like those in `binnr` which means functions are
+"attached" to the object itself. The train method uses the `cv.glmnet` function
+from the `glmnet` package and accepts all of the same arguments.
+
+##### Common Arguments
+Argument | Purpose
+---|---
+x | Dataset of predictors that should match what was used for training the ensemble.
+y | Target variable to train against.
+family | What is the distribution of the target? Binomial for 0/1 variables.
+keep | TRUE/FALSE for whether to keep the out-of-fold predictions. Useful for validation.
+alpha | Penatly mixing parameter. LASSO regression uses the default of 0.
+nfolds | How many k-folds to train the model with. Defaults to 5.
+dfmax | How many variables should the final model have?
+
+```{r train}
+rf$train(x=titanic[-1], y = titanic$Survived, family="binomial", keep=TRUE, nfolds=10)
+```
+
+The train method first creates hundreds of rules from the tree ensemble. Each
+rule is a path through a single decision tree and represents the conjunction
+of logical statments. Here are a few of the candidate rules printed in pseudo-
+code.
+
+```{r}
+head(rf$rules, 1)
+
+tail(rf$rules, 1)
 ```
 
 ### Predicting
 
+Once a RuleFit model is trained. Predictions can be produced by calling the 
+predict method.
+
 ```{r predict, warning=FALSE}
 
-p_min <- predict(rf, titanic[-1], s="lambda.min")
-p_1se <- predict(rf, titanic[-1], s="lambda.1se")
+p <- rf$predict(x = titanic[-1]) ## All Development Records
+k <- rf$predict(kfold = TRUE) ## Validation
+p_gbm <- predict(mod, titanic[-1], n.trees = gbm.perf(mod, plot.it = F))
 
-roc_min <- pROC::roc(titanic$Survived, -p_min)
-roc_1se <- pROC::roc(titanic$Survived, -p_1se)
+roc_dev <- pROC::roc(titanic$Survived, -p)
+roc_val <- pROC::roc(titanic$Survived, -k)
+roc_gbm <- pROC::roc(titanic$Survived, -p_gbm)
 
-plot(roc_min)
+plot(roc_dev)
 par(new=TRUE)
-plot(roc_1se, col="red")
+plot(roc_val, col="red")
+par(new=TRUE)
+plot(roc_gbm, col="blue")
 
 ```
 
@@ -54,40 +95,22 @@ plot(roc_1se, col="red")
 ### Predicting on New Data
 
 ```{r new-data}
-v <- rf$gbm_model$var.names
-p_sample <- predict(rf, newdata=head(titanic)[v], s="lambda.min")
+v <- rf$ensemble$mod$var.names
+p_sample <- rf$predict(x=head(titanic)[v])
 p_sample
-```
-
-
-### Keeping K-Fold Predictions
-
-```{r keep-k-fold, warning=FALSE}
-
-rf2 <- RuleFit(mod, titanic[-1], keep=TRUE)
-dev <- predict(rf2, titanic[-1], s="lambda.min")
-val <- rf2$glmnet_mod$fit.preval[, which.min(rf2$glmnet_mod$cvm)]
-
-roc_dev <- pROC::roc(titanic$Survived, -dev)
-roc_val <- pROC::roc(titanic$Survived, -val)
-
-plot(roc_dev)
-par(new=TRUE)
-plot(roc_val, col="red")
 ```
 
 ### Exporting SAS Code
 
 ```{r, export-to-sas}
-code <- rulefit_to_sas(rf, pfx="mod1")
-writeLines(code, "rule_fit_model.sas")
+f <- tempfile(fileext = "sas")
+rf$generate_sas_code(file=f, pfx="mod1")
 ```
 
 Code sample of first and last 6 lines:
 
 ```{r, export-to-sas2, echo=FALSE, results='hold'}
-cat(head(readLines("rule_fit_model.sas")), sep="\n")
+cat(head(readLines(f)), sep="\n")
 cat("\n...\n\n")
-cat(tail(readLines("rule_fit_model.sas")), sep="\n")
+cat(tail(readLines(f)), sep="\n")
 ```
-
