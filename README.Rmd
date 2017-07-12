@@ -114,3 +114,59 @@ cat(head(readLines(f)), sep="\n")
 cat("\n...\n\n")
 cat(tail(readLines(f)), sep="\n")
 ```
+
+### Using RuleFit with Binnr
+
+```{r, binnr, results='hide'}
+
+rules <- rf$ensemble$predict_sparse_nodes(titanic[-1])
+rules <- as.matrix(rules[,rf$rids])
+
+### create binnr model
+library(binnr)
+x <- cbind(titanic, rules)
+b <- bin(x, titanic$Survived)
+
+cl <- b$cluster()
+to_drop <- b$prune_clusters(cl, corr = 0.90, 1)
+b$drop(to_drop)
+
+b$fit("model1", "model with RuleFit rules", overwrite = TRUE)
+
+to_drop <- setdiff(names(x), names(titanic))
+b$drop(to_drop)
+b$fit("model2", "model with no rules")
+```
+
+### Top Rules adding to binnr model
+
+```{r, toprules}
+b$select("model1")
+b$sort()
+toprules <- as.integer(row.names(head(b$summary(), 10)))
+rf$rules[toprules[!is.na(toprules)]]
+```
+
+### RuleFit and Binnr Lift
+
+RuleFit models can be used to extract nodes and use them alongside traditional
+modeling methods such as logistic regression. Here, supplementing the original
+dataset with RuleFit rules adds considerable lift.
+
+```{r, compare-methods}
+
+## Extract the unbiased, K-Fold predictions from the binnr models
+fit1 <- b$models$model1@fit
+p_binnr_rules <- fit1$fit.preval[,which.min(fit1$cvm)]
+
+fit2 <- b$models$model2@fit
+p_binnr_alone <- fit2$fit.preval[,which.min(fit2$cvm)]
+
+roc_binnr_rules <- pROC::roc(titanic$Survived, -p_binnr_rules)
+roc_binnr_alone <- pROC::roc(titanic$Survived, -p_binnr_alone)
+
+plot(roc_binnr_alone)
+par(new=TRUE)
+plot(roc_binnr_rules, col="red")
+par(new=TRUE)
+```

@@ -87,14 +87,16 @@ printed in pseudo- code.
     head(rf$rules, 1)
 
     ## [[1]]
+    ## Pclass IN ["3"]
     ## Sex IN ["female"]
-    ## Pclass IN ["1","2"]
+    ## Fare >= 20.80000
 
     tail(rf$rules, 1)
 
     ## [[1]]
-    ## Age >= 24.75000
-    ## Parch >= 0.50000
+    ## Age IS NULL
+    ## Fare >= 7.76250
+    ## Pclass IN ["1","2"]
 
 ### Predicting
 
@@ -125,7 +127,7 @@ the predict method.
     p_sample <- rf$predict(x=head(titanic)[v])
     p_sample
 
-    ## [1] -2.4830345  3.6040292  0.5309737  4.7334587 -1.7660612 -2.4831693
+    ## [1] -2.0797191  3.6025955  0.9215585  4.4289147 -1.6492812 -2.3815767
 
 ### Exporting SAS Code
 
@@ -136,16 +138,119 @@ Code sample of first and last 6 lines:
 
     ## /*** Rule Definitions ***/
     ## 
-    ## mod1_rule_001  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
-    ## mod1_rule_002  =  (Sex in ("male")) ;
-    ## mod1_rule_003  =  (Pclass in ("3")) and (Sex in ("female")) and (Fare >= 23.35) ;
+    ## mod1_rule_001  =  (Pclass in ("3")) and (Sex in ("female")) and (Fare >= 20.8) ;
+    ## mod1_rule_002  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
+    ## mod1_rule_003  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
     ## mod1_rule_004  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
     ## 
     ## ...
     ## 
-    ##   mod1_rule_085 * -0.0468967245 +
-    ##   mod1_rule_086 *  0.0018188550 +
-    ##   mod1_rule_087 * -0.2504449966 +
-    ##   mod1_rule_088 *  0.1020695954 +
-    ##   mod1_rule_089 * -0.0703940300
+    ##   mod1_rule_081 *  0.1230950646 +
+    ##   mod1_rule_082 *  0.7217724358 +
+    ##   mod1_rule_083 *  0.4237396467 +
+    ##   mod1_rule_084 *  0.0385974410 +
+    ##   mod1_rule_085 *  0.0060821114
     ## ;
+
+### Using RuleFit with Binnr
+
+    rules <- rf$ensemble$predict_sparse_nodes(titanic[-1])
+    rules <- as.matrix(rules[,rf$rids])
+
+    ### create binnr model
+    library(binnr)
+
+    ## For binnr cheat sheet run: vignette("binnr-cheat-sheet")
+
+    ## For binnr quick start run: vignette("binnr-quick-start-guide")
+
+    x <- cbind(titanic, rules)
+    b <- bin(x, titanic$Survived)
+
+    cl <- b$cluster()
+    to_drop <- b$prune_clusters(cl, corr = 0.90, 1)
+    b$drop(to_drop)
+
+    b$fit("model1", "model with RuleFit rules", overwrite = TRUE)
+
+    to_drop <- setdiff(names(x), names(titanic))
+    b$drop(to_drop)
+    b$fit("model2", "model with no rules")
+
+### Top Rules adding to binnr model
+
+    b$select("model1")
+    b$sort()
+    toprules <- as.integer(row.names(head(b$summary(), 10)))
+
+    ## model1 
+    ## Out-of-Fold KS:  0.6792733
+
+    ## Warning: NAs introduced by coercion
+
+    rf$rules[toprules[!is.na(toprules)]]
+
+    ## [[1]]
+    ## Sex IN ["female"]
+    ## Pclass IN ["1","2"]
+    ## 
+    ## [[2]]
+    ## Sex IN ["male"]
+    ## Embarked IN ["Q","S"]
+    ## 
+    ## [[3]]
+    ## Age >= 2.50000
+    ## Embarked IN ["C","S"]
+    ## Sex IN ["female"]
+    ## 
+    ## [[4]]
+    ## Sex IN ["female"]
+    ## Age >= 14.75000
+    ## 
+    ## [[5]]
+    ## Sex IN ["female"]
+    ## Fare >= 15.37290
+    ## 
+    ## [[6]]
+    ## Age >= 11.00000
+    ## Sex IN ["female"]
+    ## Age < 38.50000
+    ## 
+    ## [[7]]
+    ## Sex IN ["female"]
+    ## Embarked IN ["C","Q"]
+    ## 
+    ## [[8]]
+    ## SibSp < 2.50000
+    ## Pclass IN ["2","3"]
+    ## Age < 7.50000
+    ## 
+    ## [[9]]
+    ## SibSp < 2.50000
+    ## Fare < 127.81665
+    ## Age < 10.00000
+
+### RuleFit and Binnr Lift
+
+RuleFit models can be used to extract nodes and use them alongside
+traditional modeling methods such as logistic regression. Here,
+supplementing the original dataset with RuleFit rules adds considerable
+lift.
+
+    ## Extract the unbiased, K-Fold predictions from the binnr models
+    fit1 <- b$models$model1@fit
+    p_binnr_rules <- fit1$fit.preval[,which.min(fit1$cvm)]
+
+    fit2 <- b$models$model2@fit
+    p_binnr_alone <- fit2$fit.preval[,which.min(fit2$cvm)]
+
+    roc_binnr_rules <- pROC::roc(titanic$Survived, -p_binnr_rules)
+    roc_binnr_alone <- pROC::roc(titanic$Survived, -p_binnr_alone)
+
+    plot(roc_binnr_alone)
+    par(new=TRUE)
+    plot(roc_binnr_rules, col="red")
+
+![](README_files/figure-markdown_strict/compare-methods-1.png)
+
+    par(new=TRUE)
