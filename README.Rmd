@@ -30,17 +30,29 @@ a RuleFit object which can be used to mine rules and train rule ensembles.
 mod <- gbm.fit(titanic[-1], titanic$Survived, distribution="bernoulli",
   interaction.depth=3, shrinkage=0.1, verbose = FALSE)
 
-rf <- rulefit(mod)
+rf <- rulefit(mod, n.trees=100)
 
-class(rf)
+print(rf)
 ```
+
+the `rulefit` function wraps a gbm model in a class that manages rule
+construction and model fitting. The rules are generated immediately but the
+model is not fit until the `train` function is called.
+
+```{r rules}
+head(lapply(rf$rules, toString))
+```
+
+For ease of programming *every* internal node is generated -- even the root
+node. That is why the first rule listed above is empty. Root nodes are not
+splits. This was a design decision and does not affect how the package is used
+in practice.
 
 ### Training
 
-Training a RuleFit model is as easy as calling the train method. This is a
-Reference Class object like those in `binnr` which means functions are
-"attached" to the object itself. The train method uses the `cv.glmnet` function
-from the `glmnet` package and accepts all of the same arguments.
+Training a RuleFit model is as easy as calling the train method. The train
+method uses the `cv.glmnet` function from the `glmnet` package and accepts all
+of the same arguments.
 
 ##### Common Arguments
 Argument | Purpose
@@ -52,121 +64,66 @@ keep | TRUE/FALSE for whether to keep the out-of-fold predictions. Useful for va
 alpha | Penatly mixing parameter. LASSO regression uses the default of 0.
 nfolds | How many k-folds to train the model with. Defaults to 5.
 dfmax | How many variables should the final model have?
+parallel | TRUE/FALSE to build kfold models in parallel. Require a backend.
 
 ```{r train}
-rf$train(x=titanic[-1], y = titanic$Survived, family="binomial", keep=TRUE, nfolds=10)
+rf <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T)
 ```
 
-The train method first creates hundreds of rules from the tree ensemble. Each
-rule is a path through a single decision tree and represents the conjunction
-of logical statments. Here are a few of the candidate rules printed in pseudo-
-code.
-
-```{r}
-head(rf$rules, 1)
-
-tail(rf$rules, 1)
-```
 
 ### Predicting
 
 Once a RuleFit model is trained. Predictions can be produced by calling the 
-predict method.
+predict method. As with the train function, `predict` also takes arguments
+accepted by `predict.cv.glmnet`. The most important of which is the lambda
+parameter, `s`. The default is to use `s="lambda.min"` which minimizes the
+out-of-fold error.
+
+Both a score as well as a sparse matrix of rules can be predicted.
+
+```{r, predict-basics, warning=FALSE}
+
+p_rf <- predict(rf, newx = titanic[-1], s="lambda.1se")
+nodes <- predict(rf, newx = titanic[-1], s="lambda.1se", nodes=TRUE)
+
+head(p_rf)
+head(nodes)
+```
+
+The out-of-fold predictions can also be extracted if the model was trained with
+`keep=TRUE`. Again, this is working with the `cv.glmnet` API. There is nothing
+magical going on here:
+
+```{r, oof}
+p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
+```
+
+#### Comparing RuleFit dev & val to GBM
 
 ```{r predict, warning=FALSE}
 
-p <- rf$predict(x = titanic[-1]) ## All Development Records
-k <- rf$predict(kfold = TRUE) ## Validation
 p_gbm <- predict(mod, titanic[-1], n.trees = gbm.perf(mod, plot.it = F))
 
-roc_dev <- pROC::roc(titanic$Survived, -p)
-roc_val <- pROC::roc(titanic$Survived, -k)
+roc_rf <- pROC::roc(titanic$Survived, -p_rf)
+roc_val <- pROC::roc(titanic$Survived, -p_val)
 roc_gbm <- pROC::roc(titanic$Survived, -p_gbm)
 
-plot(roc_dev)
+plot(roc_rf)
 par(new=TRUE)
-plot(roc_val, col="red")
+plot(roc_val, col="blue")
 par(new=TRUE)
-plot(roc_gbm, col="blue")
+plot(roc_gbm, col="red")
 
 ```
 
+### Rule Summary
 
-### Predicting on New Data
+RuleFit also provides a summary method to inspect and measure the coverage of
+fitted rules.
 
-```{r new-data}
-v <- rf$ensemble$mod$var.names
-p_sample <- rf$predict(x=head(titanic)[v])
-p_sample
-```
+```{r, summary}
 
-### Exporting SAS Code
+s <- summary(rf, s="lambda.1se", dedup=TRUE)
+s
 
-```{r, export-to-sas}
-f <- tempfile(fileext = "sas")
-rf$generate_sas_code(file=f, pfx="mod1")
-```
-
-Code sample of first and last 6 lines:
-
-```{r, export-to-sas2, echo=FALSE, results='hold'}
-cat(head(readLines(f)), sep="\n")
-cat("\n...\n\n")
-cat(tail(readLines(f)), sep="\n")
-```
-
-### Using RuleFit with Binnr
-
-```{r, binnr, results='hide'}
-
-rules <- rf$ensemble$predict_sparse_nodes(titanic[-1])
-rules <- as.matrix(rules[,rf$rids])
-
-### create binnr model
-library(binnr)
-x <- cbind(titanic, rules)
-b <- bin(x, titanic$Survived)
-
-cl <- b$cluster()
-to_drop <- b$prune_clusters(cl, corr = 0.90, 1)
-b$drop(to_drop)
-
-b$fit("model1", "model with RuleFit rules", overwrite = TRUE)
-
-to_drop <- setdiff(names(x), names(titanic))
-b$drop(to_drop)
-b$fit("model2", "model with no rules")
-```
-
-### Top Rules adding to binnr model
-
-```{r, toprules}
-b$select("model1")
-b$sort()
-toprules <- as.integer(row.names(head(b$summary(), 10)))
-rf$rules[toprules[!is.na(toprules)]]
-```
-
-### RuleFit and Binnr Lift
-
-RuleFit models can be used to extract nodes and use them alongside traditional
-modeling methods such as logistic regression. Here, supplementing the original
-dataset with RuleFit rules adds considerable lift.
-
-```{r, compare-methods}
-
-## Extract the unbiased, K-Fold predictions from the binnr models
-fit1 <- b$models$model1@fit
-p_binnr_rules <- fit1$fit.preval[,which.min(fit1$cvm)]
-
-fit2 <- b$models$model2@fit
-p_binnr_alone <- fit2$fit.preval[,which.min(fit2$cvm)]
-
-roc_binnr_rules <- pROC::roc(titanic$Survived, -p_binnr_rules)
-roc_binnr_alone <- pROC::roc(titanic$Survived, -p_binnr_alone)
-
-plot(roc_binnr_alone)
-par(new=TRUE)
-plot(roc_binnr_rules, col="red")
-par(new=TRUE)
 ```

@@ -19,28 +19,28 @@ sas.statement_ordered <- function(l) sas.node_factor(l)
 sas.statement_missing <- function(l) sprintf("(missing(%s))", l$name)
 
 #' @export
-print.statement_factor <- function(x, ...) {
- v <- sprintf("[\"%s\"]", paste0(x$value, collapse = "\",\""))
- cat(sprintf("%s IN %s", x$name, v), sep = "\n")
+toString.statement_factor <- function(x, ...) {
+  v <- sprintf("[\"%s\"]", paste0(x$value, collapse = "\",\""))
+  sprintf("%s IN %s", x$name, v)
 }
 
 #' @export
-print.statement_ordered <- function(x, ...) {
-  print.statement_factor(x, ...)
+toString.statement_ordered <- function(x, ...) {
+  toString.statement_factor(x, ...)
 }
 
 #' @export
-print.statement_missing <- function(x, ...) {
-  cat(sprintf("%s IS NULL", x$name), sep = "\n")
+toString.statement_missing <- function(x, ...) {
+  sprintf("%s IS NULL", x$name)
 }
 
 #' @export
-print.statement_numeric <- function(x, ...) {
+toString.statement_numeric <- function(x, ...) {
   d <- if (x$dir == -1) "<" else if (x$dir == 1) ">=" else "WHAT?"
-  cat(sprintf("%s %s %2.5f", x$name, d, x$value), sep = "\n")
+  sprintf("%s %s %2.5f", x$name, d, x$value)
 }
 
 #' @export
-print.rule <- function(x, ...) {
-  lapply(x, print)
+toString.rule <- function(x, ...) {
+  paste0(lapply(x, toString), collapse = " AND ")
 }

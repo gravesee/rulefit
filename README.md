@@ -16,21 +16,51 @@ train rule ensembles.
     mod <- gbm.fit(titanic[-1], titanic$Survived, distribution="bernoulli",
       interaction.depth=3, shrinkage=0.1, verbose = FALSE)
 
-    rf <- rulefit(mod)
+    rf <- rulefit(mod, n.trees=100)
 
-    class(rf)
+    print(rf)
 
-    ## [1] "RuleFit"
-    ## attr(,"package")
-    ## [1] "rulefit"
+    ## RuleFit object with 1000 rules
+    ## Rules generated from gbm model show below
+    ## --------------------------------------------------------------------------------
+    ## A gradient boosted model with bernoulli loss function.
+    ## 100 iterations were performed.
+    ## There were 7 predictors of which 7 had non-zero influence.
+
+the `rulefit` function wraps a gbm model in a class that manages rule
+construction and model fitting. The rules are generated immediately but
+the model is not fit until the `train` function is called.
+
+    head(lapply(rf$rules, toString))
+
+    ## [[1]]
+    ## [1] ""
+    ## 
+    ## [[2]]
+    ## [1] "Sex IN [\"male\"]"
+    ## 
+    ## [[3]]
+    ## [1] "Sex IN [\"female\"]"
+    ## 
+    ## [[4]]
+    ## [1] "Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## 
+    ## [[5]]
+    ## [1] "Fare < 23.35000 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## 
+    ## [[6]]
+    ## [1] "Fare >= 23.35000 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+
+For ease of programming *every* internal node is generated -- even the
+root node. That is why the first rule listed above is empty. Root nodes
+are not splits. This was a design decision and does not affect how the
+package is used in practice.
 
 ### Training
 
-Training a RuleFit model is as easy as calling the train method. This is
-a Reference Class object like those in `binnr` which means functions are
-"attached" to the object itself. The train method uses the `cv.glmnet`
-function from the `glmnet` package and accepts all of the same
-arguments.
+Training a RuleFit model is as easy as calling the train method. The
+train method uses the `cv.glmnet` function from the `glmnet` package and
+accepts all of the same arguments.
 
 ##### Common Arguments
 
@@ -74,183 +104,149 @@ arguments.
 <td align="left">dfmax</td>
 <td align="left">How many variables should the final model have?</td>
 </tr>
+<tr class="even">
+<td align="left">parallel</td>
+<td align="left">TRUE/FALSE to build kfold models in parallel. Require a backend.</td>
+</tr>
 </tbody>
 </table>
 
-    rf$train(x=titanic[-1], y = titanic$Survived, family="binomial", keep=TRUE, nfolds=10)
-
-The train method first creates hundreds of rules from the tree ensemble.
-Each rule is a path through a single decision tree and represents the
-conjunction of logical statments. Here are a few of the candidate rules
-printed in pseudo- code.
-
-    head(rf$rules, 1)
-
-    ## [[1]]
-    ## Pclass IN ["3"]
-    ## Sex IN ["female"]
-    ## Fare >= 20.80000
-
-    tail(rf$rules, 1)
-
-    ## [[1]]
-    ## Age IS NULL
-    ## Fare >= 7.76250
-    ## Pclass IN ["1","2"]
+    rf <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T)
 
 ### Predicting
 
 Once a RuleFit model is trained. Predictions can be produced by calling
-the predict method.
+the predict method. As with the train function, `predict` also takes
+arguments accepted by `predict.cv.glmnet`. The most important of which
+is the lambda parameter, `s`. The default is to use `s="lambda.min"`
+which minimizes the out-of-fold error.
 
-    p <- rf$predict(x = titanic[-1]) ## All Development Records
-    k <- rf$predict(kfold = TRUE) ## Validation
+Both a score as well as a sparse matrix of rules can be predicted.
+
+    p_rf <- predict(rf, newx = titanic[-1], s="lambda.1se")
+    nodes <- predict(rf, newx = titanic[-1], s="lambda.1se", nodes=TRUE)
+
+    head(p_rf)
+
+    ##               1
+    ## [1,] -1.8794196
+    ## [2,]  2.3696817
+    ## [3,]  0.2074039
+    ## [4,]  3.3687977
+    ## [5,] -1.7455661
+    ## [6,] -1.8397563
+
+    head(nodes)
+
+    ## 6 x 42 sparse Matrix of class "ngCMatrix"
+    ##                                                                           
+    ## [1,] . . . . . | . . | . . . . . | . . . . . . . | . . | . . . . . . . . .
+    ## [2,] . | . | | . | | . | | | | . . | | . | . | . . | . . . | . . . . . . .
+    ## [3,] . . . . . . . . . | . . | . . | . . | . . . . . . . . . . . . . . | .
+    ## [4,] . | . | | . | | . | | | | . . | | . | . | . . | . . . . . . . | . . .
+    ## [5,] . . . . . | . . | . . . . . | . . . . . . . | . . | . . . . . . . . .
+    ## [6,] . . . . . | . . | . . . . . | . . . . . . . | . | | . . . . . . . . .
+    ##                   
+    ## [1,] . . . . . . .
+    ## [2,] | . . . . . .
+    ## [3,] . . . . | . .
+    ## [4,] | | . . . . .
+    ## [5,] . | . . . . .
+    ## [6,] . . . . . . .
+
+The out-of-fold predictions can also be extracted if the model was
+trained with `keep=TRUE`. Again, this is working with the `cv.glmnet`
+API. There is nothing magical going on here:
+
+    p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
+
+#### Comparing RuleFit dev & val to GBM
+
     p_gbm <- predict(mod, titanic[-1], n.trees = gbm.perf(mod, plot.it = F))
 
     ## Using OOB method...
 
-    roc_dev <- pROC::roc(titanic$Survived, -p)
-    roc_val <- pROC::roc(titanic$Survived, -k)
+    roc_rf <- pROC::roc(titanic$Survived, -p_rf)
+    roc_val <- pROC::roc(titanic$Survived, -p_val)
     roc_gbm <- pROC::roc(titanic$Survived, -p_gbm)
 
-    plot(roc_dev)
+    plot(roc_rf)
     par(new=TRUE)
-    plot(roc_val, col="red")
+    plot(roc_val, col="blue")
     par(new=TRUE)
-    plot(roc_gbm, col="blue")
+    plot(roc_gbm, col="red")
 
 ![](README_files/figure-markdown_strict/predict-1.png)
 
-### Predicting on New Data
+### Rule Summary
 
-    v <- rf$ensemble$mod$var.names
-    p_sample <- rf$predict(x=head(titanic)[v])
-    p_sample
+RuleFit also provides a summary method to inspect and measure the
+coverage of fitted rules.
 
-    ## [1] -2.0797191  3.6025955  0.9215585  4.4289147 -1.6492812 -2.3815767
+    s <- summary(rf, s="lambda.1se", dedup=TRUE)
+    s
 
-### Exporting SAS Code
-
-    f <- tempfile(fileext = "sas")
-    rf$generate_sas_code(file=f, pfx="mod1")
-
-Code sample of first and last 6 lines:
-
-    ## /*** Rule Definitions ***/
-    ## 
-    ## mod1_rule_001  =  (Pclass in ("3")) and (Sex in ("female")) and (Fare >= 20.8) ;
-    ## mod1_rule_002  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
-    ## mod1_rule_003  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
-    ## mod1_rule_004  =  (Sex in ("female")) and (Pclass in ("1","2")) ;
-    ## 
-    ## ...
-    ## 
-    ##   mod1_rule_081 *  0.1230950646 +
-    ##   mod1_rule_082 *  0.7217724358 +
-    ##   mod1_rule_083 *  0.4237396467 +
-    ##   mod1_rule_084 *  0.0385974410 +
-    ##   mod1_rule_085 *  0.0060821114
-    ## ;
-
-### Using RuleFit with Binnr
-
-    rules <- rf$ensemble$predict_sparse_nodes(titanic[-1])
-    rules <- as.matrix(rules[,rf$rids])
-
-    ### create binnr model
-    library(binnr)
-
-    ## For binnr cheat sheet run: vignette("binnr-cheat-sheet")
-
-    ## For binnr quick start run: vignette("binnr-quick-start-guide")
-
-    x <- cbind(titanic, rules)
-    b <- bin(x, titanic$Survived)
-
-    cl <- b$cluster()
-    to_drop <- b$prune_clusters(cl, corr = 0.90, 1)
-    b$drop(to_drop)
-
-    b$fit("model1", "model with RuleFit rules", overwrite = TRUE)
-
-    to_drop <- setdiff(names(x), names(titanic))
-    b$drop(to_drop)
-    b$fit("model2", "model with no rules")
-
-### Top Rules adding to binnr model
-
-    b$select("model1")
-    b$sort()
-    toprules <- as.integer(row.names(head(b$summary(), 10)))
-
-    ## model1 
-    ## Out-of-Fold KS:  0.6792733
-
-    ## Warning: NAs introduced by coercion
-
-    rf$rules[toprules[!is.na(toprules)]]
-
-    ## [[1]]
-    ## Sex IN ["female"]
-    ## Pclass IN ["1","2"]
-    ## 
-    ## [[2]]
-    ## Sex IN ["male"]
-    ## Embarked IN ["Q","S"]
-    ## 
-    ## [[3]]
-    ## Age >= 2.50000
-    ## Embarked IN ["C","S"]
-    ## Sex IN ["female"]
-    ## 
-    ## [[4]]
-    ## Sex IN ["female"]
-    ## Age >= 14.75000
-    ## 
-    ## [[5]]
-    ## Sex IN ["female"]
-    ## Fare >= 15.37290
-    ## 
-    ## [[6]]
-    ## Age >= 11.00000
-    ## Sex IN ["female"]
-    ## Age < 38.50000
-    ## 
-    ## [[7]]
-    ## Sex IN ["female"]
-    ## Embarked IN ["C","Q"]
-    ## 
-    ## [[8]]
-    ## SibSp < 2.50000
-    ## Pclass IN ["2","3"]
-    ## Age < 7.50000
-    ## 
-    ## [[9]]
-    ## SibSp < 2.50000
-    ## Fare < 127.81665
-    ## Age < 10.00000
-
-### RuleFit and Binnr Lift
-
-RuleFit models can be used to extract nodes and use them alongside
-traditional modeling methods such as logistic regression. Here,
-supplementing the original dataset with RuleFit rules adds considerable
-lift.
-
-    ## Extract the unbiased, K-Fold predictions from the binnr models
-    fit1 <- b$models$model1@fit
-    p_binnr_rules <- fit1$fit.preval[,which.min(fit1$cvm)]
-
-    fit2 <- b$models$model2@fit
-    p_binnr_alone <- fit2$fit.preval[,which.min(fit2$cvm)]
-
-    roc_binnr_rules <- pROC::roc(titanic$Survived, -p_binnr_rules)
-    roc_binnr_alone <- pROC::roc(titanic$Survived, -p_binnr_alone)
-
-    plot(roc_binnr_alone)
-    par(new=TRUE)
-    plot(roc_binnr_rules, col="red")
-
-![](README_files/figure-markdown_strict/compare-methods-1.png)
-
-    par(new=TRUE)
+    ##                                                               rule
+    ## 1                              Fare < 52.27710 AND Sex IN ["male"]
+    ## 2                        Sex IN ["male"] AND Embarked IN ["Q","S"]
+    ## 3                          Pclass IN ["2","3"] AND Sex IN ["male"]
+    ## 4                              Fare < 26.26875 AND Sex IN ["male"]
+    ## 5                            SibSp < 2.50000 AND Sex IN ["female"]
+    ## 6                            Parch < 1.50000 AND Sex IN ["female"]
+    ## 7    Pclass IN ["1","2"] AND Fare >= 7.88750 AND Sex IN ["female"]
+    ## 8                        Pclass IN ["1","2"] AND Sex IN ["female"]
+    ## 9           Pclass IN ["1"] AND Age < 53.50000 AND Fare >= 7.63960
+    ## 10    Pclass IN ["1"] AND Embarked IN ["C","S"] AND Age < 49.50000
+    ## 11                             Fare < 29.85000 AND Age >= 36.25000
+    ## 12    Age >= 30.75000 AND Embarked IN ["C","S"] AND Age < 36.25000
+    ## 13     Fare >= 14.85205 AND Fare < 107.66250 AND Embarked IN ["C"]
+    ## 14             Fare >= 8.08125 AND Age IS NULL AND SibSp < 2.50000
+    ## 15                              Age >= 27.50000 AND Fare < 7.91040
+    ## 16 Embarked IN ["C","Q"] AND Pclass IN ["3"] AND Sex IN ["female"]
+    ## 17                            Fare < 7.88750 AND Sex IN ["female"]
+    ## 18                            Sex IN ["female"] AND Fare < 7.88335
+    ## 19           Age < 20.50000 AND Fare < 8.12500 AND Fare >= 7.13335
+    ## 20       Age < 8.50000 AND SibSp < 2.50000 AND Pclass IN ["2","3"]
+    ## 21      Fare >= 23.35000 AND Pclass IN ["3"] AND Sex IN ["female"]
+    ## 22         Embarked IN ["Q"] AND Age IS NULL AND Sex IN ["female"]
+    ## 23                            Fare < 57.48960 AND Fare >= 52.27710
+    ## 24                            Fare < 14.75000 AND Fare >= 13.93125
+    ## 25          Sex IN ["male"] AND Age < 13.00000 AND SibSp < 2.50000
+    ## 26                              Fare < 8.03960 AND Fare >= 7.91040
+    ## 27                              Fare >= 7.91040 AND Fare < 8.03960
+    ## 28                              Age < 27.50000 AND Age >= 26.50000
+    ## 29           Age < 27.50000 AND Age >= 26.50000 AND Age < 51.50000
+    ## 30         Fare >= 26.26875 AND Fare < 26.77500 AND Age >= 2.50000
+    ## 31                            Fare < 30.59790 AND Fare >= 29.85000
+    ##       support   coefficient                          number
+    ## 1  0.57351291 -0.1330504476                              73
+    ## 2  0.54096521 -0.2986900722                             363
+    ## 3  0.51066218 -0.4455881554                         43, 153
+    ## 4  0.46576880 -0.1025450102                             453
+    ## 5  0.32884400  0.5402378620                    87, 127, 177
+    ## 6  0.28507295  0.2262245400                             257
+    ## 7  0.19079686  0.0093348445                             277
+    ## 8  0.19079686  2.0023242406 8, 18, 28, 58, 68, 98, 118, 428
+    ## 9  0.16947250  0.3997983657                             216
+    ## 10 0.15712682  0.0490924074                             646
+    ## 11 0.12906846 -0.1677432681                             247
+    ## 12 0.11672278  0.1338535417                             696
+    ## 13 0.09876543  0.0422153156                             476
+    ## 14 0.08080808  0.0396633108                             437
+    ## 15 0.06621773 -0.1128672140                             594
+    ## 16 0.06285073  0.1605616556                              16
+    ## 17 0.04713805  0.1423028462                             274
+    ## 18 0.04713805  0.0654716288                             734
+    ## 19 0.03815937  0.0656134494                             465
+    ## 20 0.03703704  1.2282777346                             144
+    ## 21 0.03030303 -0.4832416940                               6
+    ## 22 0.02693603  0.5142053449                        358, 868
+    ## 23 0.02693603  0.9074777759                             587
+    ## 24 0.02356902 -0.2502898180                             777
+    ## 25 0.02356902  2.1536572416                             635
+    ## 26 0.02132435  0.3400778927                             597
+    ## 27 0.02132435  0.0004094921                             804
+    ## 28 0.02020202  0.2508015361                             484
+    ## 29 0.02020202  0.0004222513                             495
+    ## 30 0.02020202  0.7520454260                             996
+    ## 31 0.01459035  0.7164780846                             567

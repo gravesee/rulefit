@@ -10,12 +10,7 @@ Description: RuleFit uses an existing tree ensemble model as its input
     on these rules to produce a simpler model without sacrificing much, if any,
     performance.
 License: Proprietary
-Depends: gbm, glmnet, digest
+Depends: gbm, glmnet, Matrix
 Encoding: UTF-8
 LazyData: true
-Collate: 
-    'Ensemble.R'
-    'EnsembleGBM.R'
-    'RuleFit_class.R'
-    'pretty.R'
 RoxygenNote: 6.0.1
