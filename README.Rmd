@@ -2,7 +2,7 @@
 title: "README"
 author: "Eric Graves"
 date: "July 10, 2017"
-output: md_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -124,6 +124,6 @@ fitted rules.
 ```{r, summary}
 
 s <- summary(rf, s="lambda.1se", dedup=TRUE)
-s
+DT::datatable(s)
 
 ```
