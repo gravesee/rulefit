@@ -70,7 +70,7 @@ predict_sparse_nodes = function(rf, newx) {
 }
 
 ## helper class to bundle split info
-make_statement = function(tree, p, c, dir) {
+make_statement = function(mod, tree, p, c, dir) {
   v <- tree[[1]][p] + 1 # variable position (+1 because its zero indexed)
   lvls <- mod$var.levels[[v]]
 
@@ -96,7 +96,7 @@ make_statement = function(tree, p, c, dir) {
 }
 
 ### create list of statements working back from a terminal node
-make_rule <- function(tree, n) {
+make_rule <- function(mod, tree, n) {
 
   if (n == 1) return()
 
@@ -111,7 +111,7 @@ make_rule <- function(tree, n) {
 
   ## recurse
   structure(
-    c(list(make_statement(tree, p, n, dir[d])), make_rule(tree, p)),
+    c(list(make_statement(mod, tree, p, n, dir[d])), make_rule(mod, tree, p)),
     class = "rule")
 }
 
@@ -125,7 +125,7 @@ generate_rules <- function(mod, nm) {
   ## extract recursive rules
   rules <- lapply(mod$trees[nt], function(t) {
     n <- seq_along(t[[2]])
-    lapply(n, function(i) make_rule(t, i))
+    lapply(n, function(i) make_rule(mod, t, i))
   })
 
   unlist(rules, recursive = FALSE)
