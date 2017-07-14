@@ -1,7 +1,3 @@
-Installation
-------------
-
-    devtools::install_git("https://GravesEE@gitlab.ins.risk.regn.net/minneapolis-r-packages/rulefit.git")
 
 Usage
 -----
