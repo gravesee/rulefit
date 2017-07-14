@@ -50,7 +50,7 @@ predict_sparse_nodes = function(rf, newx) {
   }
 
   ## reorder newx to be in same order model was trained
-  node_ids <- gbm::predict.gbm(rf$base_model, newx[v], nt, single.tree = TRUE)
+  node_ids <- predict(rf$base_model, newx[v], nt, single.tree = TRUE)
 
   ### rule values to put in sparse matrix
   v <- sapply(t(node_ids), function(i) nm$rules[i])
@@ -70,7 +70,7 @@ predict_sparse_nodes = function(rf, newx) {
 }
 
 ## helper class to bundle split info
-make_statement = function(mod, tree, p, c, dir) {
+make_statement <- function(mod, tree, p, c, dir) {
   v <- tree[[1]][p] + 1 # variable position (+1 because its zero indexed)
   lvls <- mod$var.levels[[v]]
 
@@ -131,9 +131,13 @@ generate_rules <- function(mod, nm) {
   unlist(rules, recursive = FALSE)
 }
 
+
+#' @export
+rulefit <- function(mod, n.trees) UseMethod("rulefit")
+
 ## wrap a tree ensemble in a class and generate the rules
 #' @export
-rulefit <- function(mod, n.trees) {
+rulefit.gbm <- function(mod, n.trees) {
 
   nm <- make_node_map(mod, n.trees)
   rules <- generate_rules(mod, nm)
@@ -141,6 +145,31 @@ rulefit <- function(mod, n.trees) {
   structure(
     list(
       base_model  = mod,
+      n.trees     = n.trees,
+      rules       = rules,
+      node_map    = nm,
+      fit         = NULL,
+      support     = numeric(0)),
+    class="rulefit")
+}
+
+#' @export
+rulefit.GBMFit <- function(mod, n.trees) {
+
+  ## convert the model to gbm 2.1
+  old <- gbm3::to_old_gbm(mod)
+
+  ## check distribution is in right format
+  if(is.null(mod$distribution$name)) {
+    mod$distribution <- list(name=mod$distribution)
+  }
+
+  nm <- make_node_map(old, n.trees)
+  rules <- generate_rules(old, nm)
+
+  structure(
+    list(
+      base_model  = old,
       n.trees     = n.trees,
       rules       = rules,
       node_map    = nm,

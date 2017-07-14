@@ -3,6 +3,8 @@
 S3method(predict,rulefit)
 S3method(print,rule)
 S3method(print,rulefit)
+S3method(rulefit,GBMFit)
+S3method(rulefit,gbm)
 S3method(sas,statement_factor)
 S3method(sas,statement_missing)
 S3method(sas,statement_numeric)
