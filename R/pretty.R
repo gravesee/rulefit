@@ -44,3 +44,8 @@ toString.statement_numeric <- function(x, ...) {
 toString.rule <- function(x, ...) {
   paste0(lapply(x, toString), collapse = " AND ")
 }
+
+#' @export
+print.rule <- function(x, ...) {
+  print(toString(x))
+}
