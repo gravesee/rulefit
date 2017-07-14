@@ -160,8 +160,8 @@ rulefit.GBMFit <- function(mod, n.trees) {
   old <- gbm3::to_old_gbm(mod)
 
   ## check distribution is in right format
-  if(is.null(mod$distribution$name)) {
-    mod$distribution <- list(name=mod$distribution)
+  if(is.null(old$distribution$name)) {
+    old$distribution <- list(name=old$distribution)
   }
 
   nm <- make_node_map(old, n.trees)
