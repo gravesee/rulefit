@@ -195,9 +195,34 @@ train <- function(rf, x, y, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, ...) {
+train.rulefit <- function(rf, x, y, bags = NULL, ...) {
   nodes <- predict_sparse_nodes(rf, x)
   rf$fit <- glmnet::cv.glmnet(nodes, y, ...)
+  if(!is.null(bags)){
+    rf$fit$glmnet.fit$beta <- nodes %>%
+      as.matrix %>%
+      as.data.frame %>%
+      purrr::map_df(~ as.numeric(.)) %>%
+      dplyr::bind_cols(data.frame(y = y), .) %>%
+      broom::bootstrap(bags) %>%
+      dplyr::do(glmnet::glmnet(.[, -1] %>%
+                                 as.data.frame %>%
+                                 as.matrix, 
+                               .[, 1] %>%
+                                 as.data.frame %>%
+                                 as.matrix %>%
+                                 as.numeric,
+                               lambda = rf$fit$glmnet.fit$lambda)$beta %>%
+                  as.matrix %>%
+                  as.data.frame) %>%
+      dplyr::mutate(tree = 1:ncol(nodes)) %>%
+      dplyr::group_by(tree) %>%
+      dplyr::summarise_each(funs(mean)) %>%
+      dplyr::select(-replicate, -tree) %>%
+      as.data.frame %>%
+      as.matrix %>%
+      as('dgCMatrix')
+  } 
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
   rf
 }
