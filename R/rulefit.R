@@ -195,9 +195,31 @@ train <- function(rf, x, y, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, bags = NULL, ...) {
+train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, ...) {
   nodes <- predict_sparse_nodes(rf, x)
-  rf$fit <- glmnet::cv.glmnet(nodes, y, ...)
+  if(!is.null(linear_components)){
+    nodes <- x %>%
+      select_(paste0('c(', paste(linear_components, collapse = ', '), ')')) %>%
+      mutate_all(funs(missing_to_zero)) %>%
+      as.data.frame %>%
+      as.matrix %>%
+      cbind(nodes)
+  }
+  
+  if(!is.null(interact)){
+    nodes <- purrr::map(linear_components, ~ '['(nodes,,.)) %>% 
+      purrr::map(~ . * nodes) %>% 
+      purrr::reduce(cbind) %>% 
+      cbind(nodes, .)
+    
+    colnames(nodes) <- NULL
+  }
+  
+  rf$fit <- glmnet::cv.glmnet(nodes, 
+                              y, 
+                              standardize = T, 
+                              alpha = alpha, 
+                              ...)
   if(!is.null(bags)){
     rf$fit$glmnet.fit$beta <- nodes %>%
       as.matrix %>%
@@ -212,7 +234,9 @@ train.rulefit <- function(rf, x, y, bags = NULL, ...) {
                                  as.data.frame %>%
                                  as.matrix %>%
                                  as.numeric,
-                               lambda = rf$fit$glmnet.fit$lambda)$beta %>%
+                               lambda = rf$fit$glmnet.fit$lambda,
+                               standardize = T,
+                               alpha = alpha)$beta %>%
                   as.matrix %>%
                   as.data.frame) %>%
       dplyr::mutate(tree = 1:ncol(nodes)) %>%
@@ -224,8 +248,11 @@ train.rulefit <- function(rf, x, y, bags = NULL, ...) {
       as('dgCMatrix')
   } 
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
+  rf$linear_components <- linear_components
+  rf$interact <- interact
   rf
 }
+
 
 
 ## predict method for rulefit class
@@ -233,6 +260,22 @@ train.rulefit <- function(rf, x, y, bags = NULL, ...) {
 predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
   s <- match.arg(s)
   X <- predict_sparse_nodes(object, newx)
+  
+  if(!is.null(object$linear_components)){
+    X <- newx %>%
+      select_(paste0('c(', paste(object$linear_components, collapse = ', '), ')')) %>%
+      mutate_all(funs(missing_to_zero)) %>%
+      as.data.frame %>%
+      as.matrix %>%
+      cbind(X)
+  }
+  
+  if(!is.null(object$interact)){
+    X <- purrr::map(object$linear_components, ~ '['(X,,.)) %>% 
+      purrr::map(~ . * X) %>% 
+      purrr::reduce(cbind) %>% 
+      cbind(X, .)
+  }
 
   if (nodes) {
     cf <- coef(object$fit, s=s)[-1]
