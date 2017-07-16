@@ -207,13 +207,13 @@ train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
     if (parallel) {
       betas <- foreach(i = seq.int(bag), .combine = `+`) %dopar% {
         n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
-        fit <- glmnet(nodes[n,], y[n], lambda=lambda, standardize = FALSE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
         fit$beta
       }
     } else {
       betas <- Reduce(`+`, lapply(seq.int(bag), function(i) {
         n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
-        fit <- glmnet(nodes[n,], y[n], lambda=lambda, standardize = FALSE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
         fit$beta}))
       }
     betas <- betas / bag
