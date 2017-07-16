@@ -198,7 +198,7 @@ train <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) UseMethod("train")
 #' @export
 train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
   nodes <- predict_sparse_nodes(rf, x)
-  rf$fit <- glmnet::cv.glmnet(nodes, y, parallel=parallel, ...)
+  rf$fit <- glmnet::cv.glmnet(nodes, y, parallel=parallel, keep=TRUE, ...)
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
   
   if (!is.null(bag)) {
@@ -263,7 +263,7 @@ summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE,
 
   }
 
-  res <- res[order(-res$support),]
+  res <- res[order(-abs(res$coefficient)),]
   row.names(res) <- NULL
 
   return(res)
