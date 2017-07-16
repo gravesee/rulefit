@@ -191,14 +191,34 @@ print.rulefit <- function(object) {
 
 ## train generic
 #' @export
-train <- function(rf, x, y, ...) UseMethod("train")
+train <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) UseMethod("train")
 
 ## train method for rulefit class
+#' @importFrom Matrix colsSums
 #' @export
-train.rulefit <- function(rf, x, y, ...) {
+train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
   nodes <- predict_sparse_nodes(rf, x)
-  rf$fit <- glmnet::cv.glmnet(nodes, y, ...)
+  rf$fit <- glmnet::cv.glmnet(nodes, y, parallel=parallel, ...)
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
+  
+  if (!is.null(bag)) {
+    lambda <- rf$fit$glmnet.fit$lambda
+    
+    if (parallel) {
+      betas <- foreach(i = seq.int(bag), .combine = `+`) %dopar% {
+        n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, standardize = FALSE)
+        fit$beta
+      }
+    } else {
+      betas <- Reduce(`+`, lapply(seq.int(bag), function(i) {
+        n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, standardize = FALSE)
+        fit$beta}))
+      }
+    betas <- betas / bag
+    rf$fit$glmnet.fit$beta <- betas
+    }
   rf
 }
 
