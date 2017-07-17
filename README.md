@@ -40,16 +40,16 @@ the model is not fit until the `train` function is called.
     ## [1] "Sex IN [\"male\"]"
     ## 
     ## [[3]]
-    ## [1] "Sex IN [\"female\"]"
+    ## [1] "Age < 6.50000 AND Sex IN [\"male\"]"
     ## 
     ## [[4]]
-    ## [1] "Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Age >= 6.50000 AND Sex IN [\"male\"]"
     ## 
     ## [[5]]
-    ## [1] "Fare < 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Age IS NULL AND Sex IN [\"male\"]"
     ## 
     ## [[6]]
-    ## [1] "Fare >= 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Sex IN [\"female\"]"
 
 For ease of programming *every* internal node is generated -- even the
 root node. That is why the first rule listed above is empty. Root nodes
@@ -152,13 +152,13 @@ Both a score as well as a sparse matrix of rules can be predicted.
 
     head(p_rf)
 
-    ##               1
-    ## [1,] -1.8303155
-    ## [2,]  3.1608077
-    ## [3,]  0.9088559
-    ## [4,]  3.6679740
-    ## [5,] -1.7950465
-    ## [6,] -1.7598244
+    ##              1
+    ## [1,] -2.123572
+    ## [2,]  2.527064
+    ## [3,]  1.058210
+    ## [4,]  3.266335
+    ## [5,] -1.662469
+    ## [6,] -1.842078
 
 The out-of-fold predictions can also be extracted if the model was
 trained with `keep=TRUE`. Again, this is working with the `cv.glmnet`
@@ -189,14 +189,23 @@ API. There is nothing magical going on here:
 RuleFit also provides a summary method to inspect and measure the
 coverage of fitted rules.
 
-    fit_summary <- summary(rf, s="lambda.1se", dedup=TRUE)
+    fit_summary <- summary(fit, s="lambda.1se", dedup=TRUE)
     head(fit_summary)
 
-    ##            Length Class  Mode   
-    ## base_model   23   gbm    list   
-    ## n.trees       1   -none- numeric
-    ## rules      1000   -none- list   
-    ## node_map      3   -none- list
+    ##                                                           rule    support
+    ## 1                    Pclass IN ["1","2"] AND Sex IN ["female"] 0.19079686
+    ## 2                        SibSp < 2.50000 AND Sex IN ["female"] 0.32884400
+    ## 3                      Pclass IN ["2","3"] AND Sex IN ["male"] 0.51066218
+    ## 4                          Fare < 26.26875 AND Sex IN ["male"] 0.46576880
+    ## 5 Fare >= 26.26875 AND Fare < 27.13540 AND Pclass IN ["1","2"] 0.02469136
+    ## 6                         Fare >= 52.27710 AND Fare < 60.28750 0.03030303
+    ##   coefficient node importance
+    ## 1   2.1090142 1208  0.8286934
+    ## 2   0.5712488   77  0.2683688
+    ## 3  -0.4158792  452  0.2078923
+    ## 4  -0.2736690   43  0.1365134
+    ## 5   0.7941258  896  0.1232346
+    ## 6   0.6012536  804  0.1030668
 
 ### Variable Importance
 

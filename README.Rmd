@@ -135,7 +135,7 @@ fitted rules.
 
 ```{r, summary}
 
-fit_summary <- summary(rf, s="lambda.1se", dedup=TRUE)
+fit_summary <- summary(fit, s="lambda.1se", dedup=TRUE)
 head(fit_summary)
 
 ```
