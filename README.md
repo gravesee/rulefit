@@ -40,16 +40,16 @@ the model is not fit until the `train` function is called.
     ## [1] "Sex IN [\"male\"]"
     ## 
     ## [[3]]
-    ## [1] "Age < 9.50000 AND Sex IN [\"male\"]"
+    ## [1] "Sex IN [\"female\"]"
     ## 
     ## [[4]]
-    ## [1] "Age >= 9.50000 AND Sex IN [\"male\"]"
+    ## [1] "Pclass IN [\"3\"] AND Sex IN [\"female\"]"
     ## 
     ## [[5]]
-    ## [1] "Age IS NULL AND Sex IN [\"male\"]"
+    ## [1] "Fare < 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
     ## 
     ## [[6]]
-    ## [1] "Sex IN [\"female\"]"
+    ## [1] "Fare >= 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
 
 For ease of programming *every* internal node is generated -- even the
 root node. That is why the first rule listed above is empty. Root nodes
@@ -153,12 +153,12 @@ Both a score as well as a sparse matrix of rules can be predicted.
     head(p_rf)
 
     ##               1
-    ## [1,] -1.7128767
-    ## [2,]  2.7405530
-    ## [3,]  0.6940059
-    ## [4,]  3.3704175
-    ## [5,] -1.4211269
-    ## [6,] -1.7747749
+    ## [1,] -1.8303155
+    ## [2,]  3.1608077
+    ## [3,]  0.9088559
+    ## [4,]  3.6679740
+    ## [5,] -1.7950465
+    ## [6,] -1.7598244
 
 The out-of-fold predictions can also be extracted if the model was
 trained with `keep=TRUE`. Again, this is working with the `cv.glmnet`

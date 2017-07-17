@@ -5,7 +5,7 @@ date: "July 10, 2017"
 output: md_document
 ---
 
-```{r setup, include=FALSE, cache=TRUE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(rulefit)
 data(titanic, package="binnr")
