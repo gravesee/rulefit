@@ -1,22 +1,27 @@
 #' @export
-sas <- function(r) UseMethod("sas")
+sas <- function(x) UseMethod("sas")
 
 #' @export
-sas.statement_numeric <- function(l) {
-  fmt <- if (l$dir == -1) "(.z < %s < %s)" else "(%s >= %s)"
-  sprintf(fmt, l$name, l$value)
+sas.statement_numeric <- function(x) {
+  fmt <- if (x$dir == -1) "(.z < %s < %s)" else "(%s >= %s)"
+  sprintf(fmt, x$name, x$value)
 }
 
 #' @export
-sas.statement_factor <- function(l) {
-  sprintf("(%s in (\"%s\"))", l$name, paste(l$value, collapse="\",\""))
+sas.statement_factor <- function(x) {
+  sprintf("(%s in (\"%s\"))", x$name, paste(x$value, collapse="\",\""))
 }
 
 #' @export
-sas.statement_ordered <- function(l) sas.node_factor(l)
+sas.statement_ordered <- function(x) sas.node_factor(x)
 
 #' @export
-sas.statement_missing <- function(l) sprintf("(missing(%s))", l$name)
+sas.statement_missing <- function(x) sprintf("(missing(%s))", x$name)
+
+#' @expot
+sas.rule <- function(x) {
+  paste0(lapply(x, sas), collapse = " AND ")
+}
 
 #' @export
 toString.statement_factor <- function(x, ...) {
