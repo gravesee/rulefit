@@ -18,7 +18,7 @@ sas.statement_ordered <- function(x) sas.node_factor(x)
 #' @export
 sas.statement_missing <- function(x) sprintf("(missing(%s))", x$name)
 
-#' @expot
+#' @export
 sas.rule <- function(x) {
   paste0(lapply(x, sas), collapse = " AND ")
 }

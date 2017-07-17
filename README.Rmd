@@ -2,10 +2,10 @@
 title: "README"
 author: "Eric Graves"
 date: "July 10, 2017"
-output: html_document
+output: md_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, cache=TRUE}
 knitr::opts_chunk$set(echo = TRUE)
 library(rulefit)
 data(titanic, package="binnr")
@@ -40,7 +40,7 @@ construction and model fitting. The rules are generated immediately but the
 model is not fit until the `train` function is called.
 
 ```{r rules}
-head(lapply(rf$rules, toString))
+head(rf$rules)
 ```
 
 For ease of programming *every* internal node is generated -- even the root
@@ -60,16 +60,31 @@ Argument | Purpose
 x | Dataset of predictors that should match what was used for training the ensemble.
 y | Target variable to train against.
 family | What is the distribution of the target? Binomial for 0/1 variables.
-keep | TRUE/FALSE for whether to keep the out-of-fold predictions. Useful for validation.
 alpha | Penatly mixing parameter. LASSO regression uses the default of 0.
 nfolds | How many k-folds to train the model with. Defaults to 5.
 dfmax | How many variables should the final model have?
-parallel | TRUE/FALSE to build kfold models in parallel. Require a backend.
+parallel | TRUE/FALSE to build kfold models in parallel. Requires a backend.
 
 ```{r train}
-rf <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T)
+fit <- train(rf, titanic[-1], y = titanic$Survived, family="binomial")
 ```
 
+### Bagging
+
+Training the model on repeated, random samples with replacement can generate
+better parameter estimates. This is known as bagging.
+
+```{r, bagging}
+library(doSNOW)
+
+cl <- makeCluster(3)
+registerDoSNOW(cl)
+
+fit <- train(rf, titanic[-1], y = titanic$Survived, bag = 20, parallel = TRUE, 
+  family="binomial")
+
+stopCluster(cl)
+```
 
 ### Predicting
 
@@ -82,12 +97,9 @@ out-of-fold error.
 Both a score as well as a sparse matrix of rules can be predicted.
 
 ```{r, predict-basics, warning=FALSE}
-
-p_rf <- predict(rf, newx = titanic[-1], s="lambda.1se")
-nodes <- predict(rf, newx = titanic[-1], s="lambda.1se", nodes=TRUE)
+p_rf <- predict(fit, newx = titanic[-1], s="lambda.1se")
 
 head(p_rf)
-head(nodes)
 ```
 
 The out-of-fold predictions can also be extracted if the model was trained with
@@ -95,7 +107,7 @@ The out-of-fold predictions can also be extracted if the model was trained with
 magical going on here:
 
 ```{r, oof}
-p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
+p_val <- fit$fit$fit.preval[,match(fit$fit$lambda.1se, fit$fit$lambda)]
 ```
 
 #### Comparing RuleFit dev & val to GBM
@@ -123,7 +135,18 @@ fitted rules.
 
 ```{r, summary}
 
-s <- summary(rf, s="lambda.1se", dedup=TRUE)
-DT::datatable(s)
+fit_summary <- summary(rf, s="lambda.1se", dedup=TRUE)
+head(fit_summary)
 
+```
+
+### Variable Importance
+
+Like other tree ensemble techniques, variable importance can be calculated. This
+is different than the **rule** importance. Variable importance corresponds to
+the input variables used to generate the rules.
+
+```{r, importance}
+imp <- importance(fit, titanic[-1], s="lambda.1se")
+plot(imp)
 ```

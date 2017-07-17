@@ -1,3 +1,7 @@
+Installation
+------------
+
+    devtools::install_git("https://GravesEE@gitlab.ins.risk.regn.net/minneapolis-r-packages/rulefit.git")
 
 Usage
 -----
@@ -27,25 +31,25 @@ the `rulefit` function wraps a gbm model in a class that manages rule
 construction and model fitting. The rules are generated immediately but
 the model is not fit until the `train` function is called.
 
-    head(lapply(rf$rules, toString))
+    head(rf$rules)
 
     ## [[1]]
-    ## [1] ""
+    ## NULL
     ## 
     ## [[2]]
     ## [1] "Sex IN [\"male\"]"
     ## 
     ## [[3]]
-    ## [1] "Sex IN [\"female\"]"
+    ## [1] "Age < 9.50000 AND Sex IN [\"male\"]"
     ## 
     ## [[4]]
-    ## [1] "Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Age >= 9.50000 AND Sex IN [\"male\"]"
     ## 
     ## [[5]]
-    ## [1] "Fare < 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Age IS NULL AND Sex IN [\"male\"]"
     ## 
     ## [[6]]
-    ## [1] "Fare >= 22.90415 AND Pclass IN [\"3\"] AND Sex IN [\"female\"]"
+    ## [1] "Sex IN [\"female\"]"
 
 For ease of programming *every* internal node is generated -- even the
 root node. That is why the first rule listed above is empty. Root nodes
@@ -85,29 +89,54 @@ accepts all of the same arguments.
 <td align="left">What is the distribution of the target? Binomial for 0/1 variables.</td>
 </tr>
 <tr class="even">
-<td align="left">keep</td>
-<td align="left">TRUE/FALSE for whether to keep the out-of-fold predictions. Useful for validation.</td>
-</tr>
-<tr class="odd">
 <td align="left">alpha</td>
 <td align="left">Penatly mixing parameter. LASSO regression uses the default of 0.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td align="left">nfolds</td>
 <td align="left">How many k-folds to train the model with. Defaults to 5.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td align="left">dfmax</td>
 <td align="left">How many variables should the final model have?</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td align="left">parallel</td>
-<td align="left">TRUE/FALSE to build kfold models in parallel. Require a backend.</td>
+<td align="left">TRUE/FALSE to build kfold models in parallel. Requires a backend.</td>
 </tr>
 </tbody>
 </table>
 
-    rf <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T)
+    fit <- train(rf, titanic[-1], y = titanic$Survived, family="binomial")
+
+### Bagging
+
+Training the model on repeated, random samples with replacement can
+generate better parameter estimates. This is known as bagging.
+
+    library(doSNOW)
+
+    ## Loading required package: iterators
+
+    ## Loading required package: snow
+
+    ## 
+    ## Attaching package: 'snow'
+
+    ## The following objects are masked from 'package:parallel':
+    ## 
+    ##     clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+    ##     clusterExport, clusterMap, clusterSplit, makeCluster,
+    ##     parApply, parCapply, parLapply, parRapply, parSapply,
+    ##     splitIndices, stopCluster
+
+    cl <- makeCluster(3)
+    registerDoSNOW(cl)
+
+    fit <- train(rf, titanic[-1], y = titanic$Survived, bag = 20, parallel = TRUE, 
+      family="binomial")
+
+    stopCluster(cl)
 
 ### Predicting
 
@@ -119,42 +148,23 @@ which minimizes the out-of-fold error.
 
 Both a score as well as a sparse matrix of rules can be predicted.
 
-    p_rf <- predict(rf, newx = titanic[-1], s="lambda.1se")
-    nodes <- predict(rf, newx = titanic[-1], s="lambda.1se", nodes=TRUE)
+    p_rf <- predict(fit, newx = titanic[-1], s="lambda.1se")
 
     head(p_rf)
 
     ##               1
-    ## [1,] -1.9345827
-    ## [2,]  2.4238655
-    ## [3,] -0.2156901
-    ## [4,]  2.9697037
-    ## [5,] -1.7711434
-    ## [6,] -1.8137063
-
-    head(nodes)
-
-    ## 6 x 40 sparse Matrix of class "ngCMatrix"
-    ##                                                                           
-    ## [1,] . . . . | . | . . . | . | . . . . . . . . . | . . . | . . . . . . . .
-    ## [2,] | | | | . | . | . | . | . | . | . | | . . | | . . . . . . . . | . . .
-    ## [3,] . . . . . . . | . . . . . . . . . . . . . . | . . . . . . . | . . . .
-    ## [4,] | | | | . | . | . | . . . | . | | | | . . | | . . . . | | . . | . . .
-    ## [5,] . . . . | . | . . . | . | . . . . . . . . . | . . . | | . . . . . . .
-    ## [6,] . . . . | . | . . . | . | . . . . . . . . . | . . . | . . . . . . . .
-    ##               
-    ## [1,] | . . . .
-    ## [2,] . . . . .
-    ## [3,] . . . . .
-    ## [4,] . . . . .
-    ## [5,] . . . . .
-    ## [6,] . . . . .
+    ## [1,] -1.7128767
+    ## [2,]  2.7405530
+    ## [3,]  0.6940059
+    ## [4,]  3.3704175
+    ## [5,] -1.4211269
+    ## [6,] -1.7747749
 
 The out-of-fold predictions can also be extracted if the model was
 trained with `keep=TRUE`. Again, this is working with the `cv.glmnet`
 API. There is nothing magical going on here:
 
-    p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
+    p_val <- fit$fit$fit.preval[,match(fit$fit$lambda.1se, fit$fit$lambda)]
 
 #### Comparing RuleFit dev & val to GBM
 
@@ -179,68 +189,23 @@ API. There is nothing magical going on here:
 RuleFit also provides a summary method to inspect and measure the
 coverage of fitted rules.
 
-    s <- summary(rf, s="lambda.1se", dedup=TRUE)
-    s
+    fit_summary <- summary(rf, s="lambda.1se", dedup=TRUE)
+    head(fit_summary)
 
-    ##                                                             rule
-    ## 1                            SibSp < 1.50000 AND Fare >= 7.13335
-    ## 2                            Fare < 52.27710 AND Sex IN ["male"]
-    ## 3                            Fare < 52.55000 AND Sex IN ["male"]
-    ## 4                      Embarked IN ["Q","S"] AND Sex IN ["male"]
-    ## 5                        Pclass IN ["2","3"] AND Sex IN ["male"]
-    ## 6                           SibSp < 2.50000 AND Fare >= 15.17290
-    ## 7                          Parch < 1.50000 AND Sex IN ["female"]
-    ## 8         Sex IN ["male"] AND Fare < 7.91040 AND Parch < 2.50000
-    ## 9  Pclass IN ["1","2"] AND Fare >= 7.98750 AND Sex IN ["female"]
-    ## 10                     Pclass IN ["1","2"] AND Sex IN ["female"]
-    ## 11                            Age < 53.50000 AND Pclass IN ["1"]
-    ## 12                           Fare < 29.85000 AND Age >= 36.50000
-    ## 13                   Embarked IN ["C","Q"] AND Sex IN ["female"]
-    ## 14                            Age < 36.25000 AND Age >= 30.75000
-    ## 15        Parch < 0.50000 AND Fare >= 8.17500 AND Age < 25.50000
-    ## 16                            Pclass IN ["1"] AND Age < 36.25000
-    ## 17                          Fare < 7.98750 AND Sex IN ["female"]
-    ## 18                             Age < 5.50000 AND Fare < 84.98750
-    ## 19      Fare < 7.88750 AND Pclass IN ["3"] AND Sex IN ["female"]
-    ## 20                            Age < 10.00000 AND SibSp < 2.50000
-    ## 21                            Age >= 29.50000 AND Fare < 7.84170
-    ## 22    Fare >= 23.35000 AND Pclass IN ["3"] AND Sex IN ["female"]
-    ## 23                          Fare < 26.77500 AND Fare >= 26.12500
-    ## 24                          Fare < 57.48960 AND Fare >= 52.27710
-    ## 25       Sex IN ["female"] AND Embarked IN ["Q"] AND Age IS NULL
-    ## 26        Sex IN ["male"] AND SibSp < 2.50000 AND Age < 15.50000
-    ## 27        Fare < 27.13540 AND Age < 53.50000 AND Pclass IN ["1"]
-    ## 28                            Age < 27.50000 AND Age >= 26.50000
-    ## 29    Sex IN ["female"] AND Fare >= 14.25415 AND Fare < 15.62085
-    ## 30          Age IS NULL AND Fare < 13.98540 AND Fare >= 10.82500
-    ##        support   coefficient                               number
-    ## 1  0.869809203  0.0004645232                                  264
-    ## 2  0.573512907 -0.1818575426                                   53
-    ## 3  0.573512907 -0.0006445563                                  103
-    ## 4  0.540965208 -0.3221666015                                  493
-    ## 5  0.510662177 -0.6250436207                               43, 83
-    ## 6  0.432098765  0.1672426599                                  144
-    ## 7  0.285072952  0.4016745394                                   67
-    ## 8  0.202020202 -0.1208764631                                  734
-    ## 9  0.190796857  0.0002289093                                  587
-    ## 10 0.190796857  2.0519103753 8, 18, 28, 38, 48, 78, 108, 218, 258
-    ## 11 0.173961841  0.0399817043                                  244
-    ## 12 0.129068462 -0.1455668253                                  484
-    ## 13 0.124579125  0.4468212856                                   98
-    ## 14 0.121212121  0.0425628527                                  534
-    ## 15 0.105499439 -0.0066801191                                  605
-    ## 16 0.102132435  0.1202773843                                  554
-    ## 17 0.053872054  0.0666293325                                  584
-    ## 18 0.047138047  0.0863324131                                  693
-    ## 19 0.047138047  0.1948373068                                   75
-    ## 20 0.044893378  0.8103011370                                  383
-    ## 21 0.041526375 -0.3032423332                                  784
-    ## 22 0.030303030 -0.5591165044                             116, 256
-    ## 23 0.029180696  0.1386313554                                  567
-    ## 24 0.026936027  0.8298192561                                  177
-    ## 25 0.026936027  0.2863394343                                  668
-    ## 26 0.024691358  1.8272287990                                  405
-    ## 27 0.021324355  0.6636036688                                  245
-    ## 28 0.020202020  0.2770159330                                  827
-    ## 29 0.019079686 -0.0550543112                                  835
-    ## 30 0.003367003  0.7794430962                                  927
+    ##            Length Class  Mode   
+    ## base_model   23   gbm    list   
+    ## n.trees       1   -none- numeric
+    ## rules      1000   -none- list   
+    ## node_map      3   -none- list
+
+### Variable Importance
+
+Like other tree ensemble techniques, variable importance can be
+calculated. This is different than the **rule** importance. Variable
+importance corresponds to the input variables used to generate the
+rules.
+
+    imp <- importance(fit, titanic[-1], s="lambda.1se")
+    plot(imp)
+
+![](README_files/figure-markdown_strict/importance-1.png)

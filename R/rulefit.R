@@ -31,6 +31,18 @@ make_node_map <- function(mod, n.trees) {
   #nodes <- relist(seq_along(unlist(term)), term)
   nodes <- mapply('[', relist(seq_along(unlist(l)), l), term, SIMPLIFY = F)
 
+  #browser()
+  ## map which input variables are in which rules
+  # vars <- list()
+  # for (i in nt) {
+  #   vars[[i]] <- lapply(paths[[i]], function(p) {
+  #       mod$var.names[mod$trees[[i]][[1]][p] + 1]
+  #     })
+  # }
+  ## reverse the map
+
+  #vars <- mapply(function(p, t) mod$var.names[t[[1]][p] + 1], paths[nt], mod$trees[nt])
+
   ## unlist one level
   list(rules = unlist(res, recursive = F), nodes = nodes, termn = term)
 }
@@ -147,9 +159,7 @@ rulefit.gbm <- function(mod, n.trees) {
       base_model  = mod,
       n.trees     = n.trees,
       rules       = rules,
-      node_map    = nm,
-      fit         = NULL,
-      support     = numeric(0)),
+      node_map    = nm),
     class="rulefit")
 }
 
@@ -194,16 +204,15 @@ print.rulefit <- function(object) {
 train <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) UseMethod("train")
 
 ## train method for rulefit class
-#' @importFrom Matrix colsSums
 #' @export
 train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
   nodes <- predict_sparse_nodes(rf, x)
   rf$fit <- glmnet::cv.glmnet(nodes, y, parallel=parallel, keep=TRUE, ...)
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
-  
+
   if (!is.null(bag)) {
     lambda <- rf$fit$glmnet.fit$lambda
-    
+
     if (parallel) {
       betas <- foreach(i = seq.int(bag), .combine = `+`) %dopar% {
         n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
@@ -218,14 +227,16 @@ train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
       }
     betas <- betas / bag
     rf$fit$glmnet.fit$beta <- betas
-    }
+  }
+
+  class(rf) <- c("rulefit", "rulefitFit")
   rf
 }
 
 
 ## predict method for rulefit class
 #' @export
-predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
+predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
   s <- match.arg(s)
   X <- predict_sparse_nodes(object, newx)
 
@@ -239,17 +250,18 @@ predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes
 
 ## summary method for rulefit class
 #' @export
-summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
+summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
   s <- match.arg(s)
   if (is.null(object$fit)) return(invisible())
 
   cf <- coef(object$fit, s=s)[-1]
 
   res <- data.frame(
-    rule = sapply(object$rules[cf != 0], toString),
     support = object$support[cf != 0],
     coefficient = cf[cf != 0],
-    number = which(cf != 0))
+    node = which(cf != 0),
+    rule = sapply(object$rules[cf != 0], toString)
+    )
 
   if (dedup) {
 
@@ -263,7 +275,9 @@ summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE,
 
   }
 
-  res <- res[order(-abs(res$coefficient)),]
+  res$importance <- abs(res$coefficient) * sqrt(res$support * (1 - res$support))
+
+  res <- res[order(res$importance, decreasing = TRUE),]
   row.names(res) <- NULL
 
   return(res)
