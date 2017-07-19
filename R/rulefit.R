@@ -1,7 +1,7 @@
 ## work back from node map to get all nodes passed through
 node_path <- function(cid, tree) {
 
-  if (cid == 1) return(1)
+  if (cid == 1) return(numeric(0))
 
   k <- do.call(cbind, tree[3:5])
   p <- row(k)[which(k == (cid - 1))]
@@ -192,10 +192,14 @@ train <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, bag=NULL, parallel=FALSE, ...) {
+train.rulefit <- function(rf, x, y, threshold=0.1, bag=NULL, parallel=FALSE,  ...) {
   nodes <- predict_sparse_nodes(rf, x)
+  rf$support <- Matrix::colSums(nodes)/nrow(nodes) ## support
+  v <- sqrt(rf$support * (1 - rf$support)) < threshold ## rule variance threshold
+
+  if (any(v)) nodes[,v] <- FALSE
+
   rf$fit <- glmnet::cv.glmnet(nodes, y, parallel=parallel, keep=TRUE, ...)
-  rf$support <- Matrix::colSums(nodes)/nrow(nodes)
 
   if (!is.null(bag)) {
     lambda <- rf$fit$glmnet.fit$lambda
@@ -232,34 +236,31 @@ predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), no
     return(X[,which(cf != 0)])
   }
 
-  predict(object$fit, X, s=s)
+  predict(object$fit, X, s=s, ...)[,1] ## return vector
 }
-
 
 ## summary method for rulefit class
 #' @export
 summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
   s <- match.arg(s)
-  if (is.null(object$fit)) return(invisible())
-
   cf <- coef(object$fit, s=s)[-1]
 
   res <- data.frame(
     support = object$support[cf != 0],
     coefficient = cf[cf != 0],
     node = which(cf != 0),
-    rule = sapply(object$rules[cf != 0], toString)
-    )
+    rule = sapply(object$rules[cf != 0], toString))
 
+  #browser()
   if (dedup) {
 
     sums <- aggregate(.~rule, res, sum)
     maxs <- aggregate(.~rule, res, max)
-    nums <- aggregate(.~rule, res, c)
+    nums <- aggregate(.~rule, res, list)
 
     res <- sums
     res$support <- maxs$support
-    res$number <- nums$number
+    res$node <- nums$node
 
   }
 

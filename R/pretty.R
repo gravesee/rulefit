@@ -1,28 +1,28 @@
 #' @export
-sas <- function(x) UseMethod("sas")
+sas <- function(x, ...) UseMethod("sas")
 
 #' @export
-sas.default <- function(x) NULL
+sas.default <- function(x, ...) NULL
 
 #' @export
-sas.statement_numeric <- function(x) {
+sas.statement_numeric <- function(x, ...) {
   fmt <- if (x$dir == -1) "(.z < %s < %s)" else "(%s >= %s)"
   sprintf(fmt, x$name, x$value)
 }
 
 #' @export
-sas.statement_factor <- function(x) {
+sas.statement_factor <- function(x, ...) {
   sprintf("(%s in (\"%s\"))", x$name, paste(x$value, collapse="\",\""))
 }
 
 #' @export
-sas.statement_ordered <- function(x) sas.node_factor(x)
+sas.statement_ordered <- function(x, ...) sas.node_factor(x, ...)
 
 #' @export
-sas.statement_missing <- function(x) sprintf("(missing(%s))", x$name)
+sas.statement_missing <- function(x, ...) sprintf("(missing(%s))", x$name)
 
 #' @export
-sas.rule <- function(x) {
+sas.rule <- function(x, ...) {
   paste0(lapply(x, sas), collapse = " AND ")
 }
 
@@ -63,7 +63,7 @@ rlang <- function(x) UseMethod("rlang")
 
 #' @export
 rlang.statement_numeric <- function(x) {
-  fmt <- if (x$dir == -1) "(%s < %s & !is.null(%s))" else "(%s >= %s & !is.null(%s))"
+  fmt <- if (x$dir == -1) "(%s < %s & !is.na(%s))" else "(%s >= %s & !is.na(%s))"
   sprintf(fmt, x$name, x$value, x$name)
 }
 
@@ -85,4 +85,27 @@ rlang.default <- function(x) NULL
 rlang.rule <- function(x) {
   paste0(lapply(x, rlang), collapse = " & ")
 }
+
+
+
+### SAS model
+#' @export
+sas.rulefitFit <- function(x, s=c("lambda.1se", "lambda.min"), pfx="rf", ...) {
+  s <- match.arg(s)
+  cf <- coef(x$fit, s)[,1]
+  rules <- x$rules[which(cf[-1] != 0)]
+
+  nm <- sprintf("%s_rule%03d", pfx, seq_along(rules))
+
+  code <- c(
+    c("/* Rule Definitions */"),
+    sprintf("%s = %s;", nm, sapply(rules, sas)),
+    c("\n/* Model Equation */"),
+    sprintf("%s_rulefit_mod = %3.6f", pfx, cf[1]),
+    sprintf("  + % 3.6f * %s", cf[cf != 0][-1], nm), ";")
+
+  code
+}
+
+
 
