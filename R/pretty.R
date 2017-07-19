@@ -2,6 +2,9 @@
 sas <- function(x) UseMethod("sas")
 
 #' @export
+sas.default <- function(x) NULL
+
+#' @export
 sas.statement_numeric <- function(x) {
   fmt <- if (x$dir == -1) "(.z < %s < %s)" else "(%s >= %s)"
   sprintf(fmt, x$name, x$value)
@@ -54,3 +57,32 @@ toString.rule <- function(x, ...) {
 print.rule <- function(x, ...) {
   print(toString(x))
 }
+
+#' @export
+rlang <- function(x) UseMethod("rlang")
+
+#' @export
+rlang.statement_numeric <- function(x) {
+  fmt <- if (x$dir == -1) "(%s < %s & !is.null(%s))" else "(%s >= %s & !is.null(%s))"
+  sprintf(fmt, x$name, x$value, x$name)
+}
+
+#' @export
+rlang.statement_factor <- function(x) {
+  sprintf("(%s %%in%% c(\"%s\"))", x$name, paste(x$value, collapse="\",\""))
+}
+
+#' @export
+rlang.statement_ordered <- function(x) rlang.node_factor(x)
+
+#' @export
+rlang.statement_missing <- function(x) sprintf("(is.na(%s))", x$name)
+
+#' @export
+rlang.default <- function(x) NULL
+
+#' @export
+rlang.rule <- function(x) {
+  paste0(lapply(x, rlang), collapse = " & ")
+}
+
