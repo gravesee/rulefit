@@ -213,10 +213,6 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   
   # add linear effects
   if(!is.null(linear_components)){
-    centers <- x %>% '['(, linear_components) %>% purrr::map_dbl(~ mean(., na.rm = T))
-    
-    scales <- x %>% '['(, linear_components) %>% purrr::map_dbl(~ sd(., na.rm = T))
-    
     nodes <- x %>%
       select_(paste0('c(', paste(linear_components, collapse = ', '), ')')) %>%
       as.data.frame %>%
@@ -234,15 +230,20 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
     colnames(nodes) <- NULL
   }
   
-  nodes <- nodes %>% 
-    as.matrix %>% 
-    as.data.frame %>% 
-    as.tbl %>%
-    mutate_all(funs(as.numeric)) %>% 
-    mutate_all(funs(scale)) %>% 
-    mutate_all(funs(missing_to_zero)) %>%
+  # centering and scaling
+  nodes <- nodes %>%
+    scale
+  
+  # extract centers
+  centers <- nodes %>%
+    attr('scaled:centers')
+  
+  scales <- nodes %>%
+    attr('scaled:scales')
+  
+  nodes <- nodes %>%
     as.data.frame %>%
-    as.matrix
+    purrr::map_df(~ Hmisc::impute(., 0))
   
   rf$fit <- glmnet::cv.glmnet(nodes, 
                               y, 
