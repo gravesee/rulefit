@@ -236,14 +236,16 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   
   # extract centers
   centers <- nodes %>%
-    attr('scaled:centers')
+    attr('scaled:center')
   
   scales <- nodes %>%
-    attr('scaled:scales')
+    attr('scaled:scale')
   
   nodes <- nodes %>%
     as.data.frame %>%
-    purrr::map_df(~ Hmisc::impute(., 0))
+    purrr::map_df(~ Hmisc::impute(., 0)) %>%
+    as.matrix %>%
+    as(., 'dgCMatrix')
   
   rf$fit <- glmnet::cv.glmnet(nodes, 
                               y, 
@@ -277,6 +279,10 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
       as.matrix %>%
       as('dgCMatrix')
   } 
+  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta/scales
+  rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% 
+    as.numeric %>% 
+    '-'(rf$fit$glmnet.fit$a0, .)
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
   rf$linear_components <- linear_components
   rf$centers <- centers
