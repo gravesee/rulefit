@@ -188,6 +188,18 @@ print.rulefit <- function(object) {
   invisible()
 }
 
+## functions for decoding rules 
+name_extract <- function(rulelist) purrr::map_chr(rulelist, ~ '$'('name'))
+
+names_list <- function(rulelist) purrr::map(rulelist, ~ if(!is.null(.)) name_extract(.))
+
+unique_names <- function(rulelist) names_list(rulelist) %>% unlist %>% unique
+
+## missing values to zeros for linear components
+missing_to_zero <- function(x){
+  Hmisc::impute(x, 0) %>%
+    unclass
+}
 
 ## train generic
 #' @export
@@ -196,16 +208,23 @@ train <- function(rf, x, y, ...) UseMethod("train")
 ## train method for rulefit class
 #' @export
 train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, ...) {
+  # make node matrix
   nodes <- predict_sparse_nodes(rf, x)
+  
+  # add linear effects
   if(!is.null(linear_components)){
+    centers <- x %>% '['(, linear_components) %>% purrr::map_dbl(~ mean(., na.rm = T))
+    
+    scales <- x %>% '['(, linear_components) %>% purrr::map_dbl(~ sd(., na.rm = T))
+    
     nodes <- x %>%
       select_(paste0('c(', paste(linear_components, collapse = ', '), ')')) %>%
-      mutate_all(funs(missing_to_zero)) %>%
       as.data.frame %>%
       as.matrix %>%
       cbind(nodes)
   }
   
+  # expand on interactions
   if(!is.null(interact)){
     nodes <- purrr::map(linear_components, ~ '['(nodes,,.)) %>% 
       purrr::map(~ . * nodes) %>% 
@@ -215,9 +234,19 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
     colnames(nodes) <- NULL
   }
   
+  nodes <- nodes %>% 
+    as.matrix %>% 
+    as.data.frame %>% 
+    as.tbl %>%
+    mutate_all(funs(as.numeric)) %>% 
+    mutate_all(funs(scale)) %>% 
+    mutate_all(funs(missing_to_zero)) %>%
+    as.data.frame %>%
+    as.matrix
+  
   rf$fit <- glmnet::cv.glmnet(nodes, 
                               y, 
-                              standardize = T, 
+                              standardize = F, 
                               alpha = alpha, 
                               ...)
   if(!is.null(bags)){
@@ -235,7 +264,7 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
                                  as.matrix %>%
                                  as.numeric,
                                lambda = rf$fit$glmnet.fit$lambda,
-                               standardize = T,
+                               standardize = F,
                                alpha = alpha)$beta %>%
                   as.matrix %>%
                   as.data.frame) %>%
@@ -249,11 +278,11 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   } 
   rf$support <- Matrix::colSums(nodes)/nrow(nodes)
   rf$linear_components <- linear_components
+  rf$centers <- centers
+  rf$scales <- scales
   rf$interact <- interact
   rf
 }
-
-
 
 ## predict method for rulefit class
 #' @export
