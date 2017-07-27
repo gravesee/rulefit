@@ -207,7 +207,8 @@ train <- function(rf, x, y, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, foldid = NULL, ...) {
+train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, foldid = NULL, parallel = TRUE, keep, ...) {
+
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)
   
@@ -262,35 +263,29 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
                               y, 
                               standardize = F, 
                               alpha = alpha,
+                              keep = keep,
                               foldid = foldid,
                               ...)
-  if(!is.null(bags)){
-    rf$fit$glmnet.fit$beta <- nodes %>%
-      as.matrix %>%
-      as.data.frame %>%
-      purrr::map_df(~ as.numeric(.)) %>%
-      dplyr::bind_cols(data.frame(y = y), .) %>%
-      broom::bootstrap(bags) %>%
-      dplyr::do(glmnet::glmnet(.[, -1] %>%
-                                 as.data.frame %>%
-                                 as.matrix, 
-                               .[, 1] %>%
-                                 as.data.frame %>%
-                                 as.matrix %>%
-                                 as.numeric,
-                               lambda = rf$fit$glmnet.fit$lambda,
-                               standardize = F,
-                               alpha = alpha)$beta %>%
-                  as.matrix %>%
-                  as.data.frame) %>%
-      dplyr::mutate(tree = 1:ncol(nodes)) %>%
-      dplyr::group_by(tree) %>%
-      dplyr::summarise_each(funs(mean)) %>%
-      dplyr::select(-replicate, -tree) %>%
-      as.data.frame %>%
-      as.matrix %>%
-      as('dgCMatrix')
-  } 
+  
+  if (!is.null(bags)) {
+    lambda <- rf$fit$glmnet.fit$lambda
+    
+    if (parallel) {
+      betas <- foreach(i = seq.int(bags), .combine = `+`) %dopar% {
+        n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
+        fit$beta
+      }
+    } else {
+      betas <- Reduce(`+`, lapply(seq.int(bags), function(i) {
+        n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
+        fit$beta}))
+    }
+    betas <- betas / bags
+    rf$fit$glmnet.fit$beta <- betas
+  }
+  
   rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales # rescale betas
   rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% # add rescaled centers to the intercept
     as.numeric %>% 
@@ -344,9 +339,9 @@ summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE,
   cf <- coef(object$fit, s=s)[-1]
 
   res <- data.frame(
-    rule = sapply(object$rules[cf != 0], toString),
-    support = object$support[cf != 0],
-    coefficient = cf[cf != 0],
+    rule = sapply(object$rules[-object$nodes_index][cf != 0], toString),
+    support = object$support[-object$nodes_index][cf != 0],
+    coefficient = cf[-object$nodes_index][cf != 0],
     number = which(cf != 0))
 
   if (dedup) {
