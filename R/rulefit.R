@@ -211,6 +211,16 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)
   
+  # this is laboreous but was the quickest fix for removing redundant information from the nodes
+  # need ot modify predict_sparse_nodes to do this in a simpler fashion
+  singular_nodes_index <- nodes %>%
+    as.matrix %>%
+    caret::findLinearCombos(.) %>%
+    '$'(., 'remove')
+  
+  nodes <- nodes[, -singular_nodes_index]
+  rf$nodes_index <- singular_nodes_index
+  
   # add linear effects
   if(!is.null(linear_components)){
     nodes <- x %>%
@@ -281,8 +291,8 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
       as.matrix %>%
       as('dgCMatrix')
   } 
-  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales
-  rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% 
+  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales # rescale betas
+  rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% # add rescaled centers to the intercept
     as.numeric %>% 
     '-'(rf$fit$glmnet.fit$a0, .)
   rf$support <- Matrix::colSums(nodes) / nrow(nodes)
@@ -299,6 +309,7 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
 predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
   s <- match.arg(s)
   X <- predict_sparse_nodes(object, newx)
+  X <- X[, -object$nodes_index]
   
   if(!is.null(object$linear_components)){
     X <- newx %>%
