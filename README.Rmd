@@ -8,7 +8,8 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(rulefit)
-data(titanic, package="binnr")
+library(dplyr)
+data(titanic, package="binnr2")
 ```
 
 ## Installation
@@ -27,10 +28,15 @@ a RuleFit object which can be used to mine rules and train rule ensembles.
 
 ```{r constructor, warning=FALSE}
 
-mod <- gbm.fit(titanic[-1], titanic$Survived, distribution="bernoulli",
-  interaction.depth=3, shrinkage=0.1, verbose = FALSE)
+mod <- gbm.fit(titanic[-1], 
+               titanic$Survived, 
+               distribution="bernoulli",
+               interaction.depth=3, 
+               shrinkage=0.1, 
+               verbose = FALSE)
 
-rf <- rulefit(mod, n.trees=100)
+rf <- rulefit(mod, 
+              n.trees=100)
 
 print(rf)
 ```
@@ -67,7 +73,9 @@ dfmax | How many variables should the final model have?
 parallel | TRUE/FALSE to build kfold models in parallel. Require a backend.
 
 ```{r train}
-rf <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T)
+foldids <- sample(1:5, nrow(titanic), replace = T)
+rf_ANOVA <- train(rf, titanic[-1], y = titanic$Survived, family="binomial", keep=T, foldid = foldids)
+rf_ANCOVA <- train(rf, titanic[-1], y = titanic$Survived, family='binomial', keep=T, linear_components = c('Age', 'Fare'), interact = T, foldid = foldids)
 ```
 
 
@@ -83,20 +91,15 @@ Both a score as well as a sparse matrix of rules can be predicted.
 
 ```{r, predict-basics, warning=FALSE}
 
-p_rf <- predict(rf, newx = titanic[-1], s="lambda.1se")
-nodes <- predict(rf, newx = titanic[-1], s="lambda.1se", nodes=TRUE)
+p_rf_ANOVA <- predict(rf_ANOVA, newx = titanic[-1], s="lambda.1se")
+p_rf_ANCOVA <- predict(rf_ANCOVA, titanic[-1], s='lambda.1se')
 
-head(p_rf)
-head(nodes)
+head(p_rf_ANOVA)
 ```
 
 The out-of-fold predictions can also be extracted if the model was trained with
 `keep=TRUE`. Again, this is working with the `cv.glmnet` API. There is nothing
 magical going on here:
-
-```{r, oof}
-p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
-```
 
 #### Comparing RuleFit dev & val to GBM
 
@@ -104,15 +107,19 @@ p_val <- rf$fit$fit.preval[,match(rf$fit$lambda.1se, rf$fit$lambda)]
 
 p_gbm <- predict(mod, titanic[-1], n.trees = gbm.perf(mod, plot.it = F))
 
-roc_rf <- pROC::roc(titanic$Survived, -p_rf)
-roc_val <- pROC::roc(titanic$Survived, -p_val)
+roc_rf_ANOVA <- pROC::roc(titanic$Survived, -p_rf_ANOVA)
+roc_rf_ANCOVA <- pROC::roc(titanic$Survived, p_rf_ANCOVA)
 roc_gbm <- pROC::roc(titanic$Survived, -p_gbm)
 
-plot(roc_rf)
+plot(roc_rf_ANOVA)
 par(new=TRUE)
-plot(roc_val, col="blue")
+plot(roc_rf_ANCOVA, col="blue")
 par(new=TRUE)
 plot(roc_gbm, col="red")
+
+ModelMetrics::auc(actual = titanic$Survived, p_rf_ANOVA)
+ModelMetrics::auc(actual = titanic$Survived, p_rf_ANCOVA)
+ModelMetrics::auc(actual = titanic$Survived, p_gbm)
 
 ```
 
