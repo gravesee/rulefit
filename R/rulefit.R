@@ -189,7 +189,7 @@ print.rulefit <- function(object) {
 }
 
 ## functions for decoding rules 
-name_extract <- function(rulelist) purrr::map_chr(rulelist, ~ '$'('name'))
+name_extract <- function(rulelist) purrr::map_chr(rulelist, ~ '$'(., 'name'))
 
 names_list <- function(rulelist) purrr::map(rulelist, ~ if(!is.null(.)) name_extract(.))
 
@@ -207,7 +207,7 @@ train <- function(rf, x, y, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, ...) {
+train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, foldid = NULL, ...) {
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)
   
@@ -239,7 +239,8 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
     attr('scaled:center')
   
   scales <- nodes %>%
-    attr('scaled:scale')
+    attr('scaled:scale') %>%
+    ifelse(. == 0, 1, .)
   
   nodes <- nodes %>%
     as.data.frame %>%
@@ -250,7 +251,8 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   rf$fit <- glmnet::cv.glmnet(nodes, 
                               y, 
                               standardize = F, 
-                              alpha = alpha, 
+                              alpha = alpha,
+                              foldid = foldid,
                               ...)
   if(!is.null(bags)){
     rf$fit$glmnet.fit$beta <- nodes %>%
@@ -279,12 +281,13 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
       as.matrix %>%
       as('dgCMatrix')
   } 
-  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta/scales
+  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales
   rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% 
     as.numeric %>% 
     '-'(rf$fit$glmnet.fit$a0, .)
-  rf$support <- Matrix::colSums(nodes)/nrow(nodes)
+  rf$support <- Matrix::colSums(nodes) / nrow(nodes)
   rf$linear_components <- linear_components
+  rf$rule_components <- unique_names(rf$rules)
   rf$centers <- centers
   rf$scales <- scales
   rf$interact <- interact
