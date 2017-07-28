@@ -86,8 +86,6 @@ rlang.rule <- function(x) {
   paste0(lapply(x, rlang), collapse = " & ")
 }
 
-
-
 ### SAS model
 #' @export
 sas.rulefitFit <- function(x, s=c("lambda.1se", "lambda.min"), pfx="rf", ...) {
@@ -104,5 +102,54 @@ sas.rulefitFit <- function(x, s=c("lambda.1se", "lambda.min"), pfx="rf", ...) {
     sprintf("%s_rulefit_mod = %3.6f", pfx, cf[1]),
     sprintf("  + % 3.6f * %s", cf[cf != 0][-1], nm), ";")
 
+  code
+}
+
+### SQL support
+
+#' @export
+sql <- function(x, ...) UseMethod("sql")
+
+#' @export
+sql.default <- function(x, ...) NULL
+
+#' @export
+sql.statement_numeric <- function(x, ...) {
+  fmt <- if (x$dir == -1) "(%s < %s)" else "(%s >= %s)"
+  sprintf(fmt, x$name, x$value)
+}
+
+#' @export
+sql.statement_factor <- function(x, ...) {
+  sprintf("(%s in (\'%s\'))", x$name, paste(x$value, collapse="\',\'"))
+}
+
+#' @export
+sql.statement_ordered <- function(x, ...) sql.node_factor(x, ...)
+
+#' @export
+sql.statement_missing <- function(x, ...) sprintf("(%s is NULL)", x$name)
+
+#' @export
+sql.rule <- function(x, ...) {
+  paste0(lapply(x, sql), collapse = " AND ")
+}
+
+#' @export
+sql.rulefitFit <- function(x, s=c("lambda.1se", "lambda.min"), pfx="rf", ...) {
+  s <- match.arg(s)
+  cf <- coef(x$fit, s)[,1]
+  rules <- x$rules[which(cf[-1] != 0)]
+  
+  nm <- sprintf("%s_rule%03d", pfx, seq_along(rules))
+  
+  code <- c(
+    c("/* Rule Definitions */"),
+    sprintf("CASE WHEN %s THEN 1 ELSE 0 END as %s;", sapply(rules, sql), nm),
+    c("\n/* Model Equation */"),
+    sprintf("    % 3.6f", cf[1]),
+    sprintf("  + % 3.6f * %s", cf[cf != 0][-1], nm), 
+    sprintf("  as %s_rulefit_mod", pfx))
+  
   code
 }
