@@ -142,11 +142,13 @@ sql.rulefitFit <- function(x, s=c("lambda.1se", "lambda.min"), pfx="rf", ...) {
   rules <- x$rules[which(cf[-1] != 0)]
   
   nm <- sprintf("%s_rule%03d", pfx, seq_along(rules))
+  len <- length(nm)
   
   code <- c(
     c("/* Rule Definitions */"),
-    sprintf("CASE WHEN %s THEN 1 ELSE 0 END as %s;", sapply(rules, sql), nm),
-    c("\n/* Model Equation */"),
+    sprintf("CASE WHEN %s THEN 1 ELSE 0 END as %s,", sapply(rules[-len], sql), nm[-len]),
+    sprintf("CASE WHEN %s THEN 1 ELSE 0 END as %s", sapply(rules[len], sql), nm[len]),
+    c("/* Model Equation */"),
     sprintf("    % 3.6f", cf[1]),
     sprintf("  + % 3.6f * %s", cf[cf != 0][-1], nm), 
     sprintf("  as %s_rulefit_mod", pfx))
