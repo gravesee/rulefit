@@ -141,8 +141,8 @@ rulefit.gbm <- function(mod, n.trees) {
 
   nm <- make_node_map(mod, n.trees)
   rules <- generate_rules(mod, nm)
-
-  structure(
+  
+  rf <- structure(
     list(
       base_model  = mod,
       n.trees     = n.trees,
@@ -151,6 +151,15 @@ rulefit.gbm <- function(mod, n.trees) {
       fit         = NULL,
       support     = numeric(0)),
     class="rulefit")
+  
+  predict_sparse_nodes(rf, gbm::reconstructGBMdata(mod)) %>%
+    as.matrix %>%
+    caret::findLinearCombos(.) %>%
+    '$'(., 'remove') -> singular_nodes_index
+  
+  rf$nodes_index <- singular_nodes_index
+  
+  return(rf)
 }
 
 #' @export
@@ -167,7 +176,7 @@ rulefit.GBMFit <- function(mod, n.trees) {
   nm <- make_node_map(old, n.trees)
   rules <- generate_rules(old, nm)
 
-  structure(
+  rf <- structure(
     list(
       base_model  = old,
       n.trees     = n.trees,
@@ -176,6 +185,15 @@ rulefit.GBMFit <- function(mod, n.trees) {
       fit         = NULL,
       support     = numeric(0)),
     class="rulefit")
+  
+  predict_sparse_nodes(rf, gbm::reconstructGBMdata(old)) %>%
+    as.matrix %>%
+    caret::findLinearCombos(.) %>%
+    '$'(., 'remove') -> singular_nodes_index
+  
+  rf$nodes_index <- singular_nodes_index
+  
+  return(rf)
 }
 
 ## print method for rulefit class
@@ -210,17 +228,7 @@ train <- function(rf, x, y, ...) UseMethod("train")
 train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, foldid = NULL, parallel = TRUE, keep, ...) {
 
   # make node matrix
-  nodes <- predict_sparse_nodes(rf, x)
-  
-  # this is laboreous but was the quickest fix for removing redundant information from the nodes
-  # need ot modify predict_sparse_nodes to do this in a simpler fashion
-  singular_nodes_index <- nodes %>%
-    as.matrix %>%
-    caret::findLinearCombos(.) %>%
-    '$'(., 'remove')
-  
-  nodes <- nodes[, -singular_nodes_index]
-  rf$nodes_index <- singular_nodes_index
+  nodes <- predict_sparse_nodes(rf, x)[, -rf$nodes_index]
   
   # add linear effects
   if(!is.null(linear_components)){
