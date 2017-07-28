@@ -186,7 +186,7 @@ rulefit.GBMFit <- function(mod, n.trees) {
       support     = numeric(0)),
     class="rulefit")
   
-  predict_sparse_nodes(rf, gbm::reconstructGBMdata(mod)) %>%
+  predict_sparse_nodes(rf, gbm::reconstructGBMdata(old)) %>%
     as.matrix %>%
     caret::findLinearCombos(.) %>%
     '$'(., 'remove') -> singular_nodes_index
