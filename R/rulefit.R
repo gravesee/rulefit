@@ -131,7 +131,6 @@ generate_rules <- function(mod, nm) {
   unlist(rules, recursive = FALSE)
 }
 
-
 #' @export
 rulefit <- function(mod, n.trees) UseMethod("rulefit")
 
@@ -157,7 +156,7 @@ rulefit.gbm <- function(mod, n.trees) {
     caret::findLinearCombos(.) %>%
     '$'(., 'remove') -> singular_nodes_index
   
-  rf$nodes_index <- singular_nodes_index
+  rf$nodes_index <- c(1, singular_nodes_index)
   
   return(rf)
 }
@@ -191,7 +190,7 @@ rulefit.GBMFit <- function(mod, n.trees) {
     caret::findLinearCombos(.) %>%
     '$'(., 'remove') -> singular_nodes_index
   
-  rf$nodes_index <- singular_nodes_index
+  rf$nodes_index <- c(1, singular_nodes_index)
   
   return(rf)
 }
