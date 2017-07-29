@@ -219,13 +219,28 @@ missing_to_zero <- function(x){
     unclass
 }
 
+# winsorization for continuous variables
+winsorize <- function(x, beta){
+  quant <- quantile(x, probs = c(beta, 1.0 - beta), na.rm = T)
+  pmax(min(quant), pmin(max(quant), x)) # min and max so we can take any beta between 0 and 1
+}
+
 ## train generic
 #' @export
 train <- function(rf, x, y, ...) UseMethod("train")
 
 ## train method for rulefit class
 #' @export
-train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, bags = NULL, alpha = 1, foldid = NULL, parallel = TRUE, keep, ...) {
+train.rulefit <- function(rf, x, y, 
+                          linear_components = NULL, 
+                          interact = NULL, 
+                          bags = NULL, 
+                          alpha = 1, 
+                          winsor = .025, 
+                          foldid = NULL, 
+                          parallel = TRUE, 
+                          keep, 
+                          ...) {
 
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)[, -rf$nodes_index]
@@ -234,6 +249,7 @@ train.rulefit <- function(rf, x, y, linear_components = NULL, interact = NULL, b
   if(!is.null(linear_components)){
     nodes <- x %>%
       select_(paste0('c(', paste(linear_components, collapse = ', '), ')')) %>%
+      mutate_all(funs(winsorize(., winsor))) %>%
       as.data.frame %>%
       as.matrix %>%
       cbind(nodes)
