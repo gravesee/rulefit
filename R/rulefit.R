@@ -252,16 +252,16 @@ train.rulefit <- function(rf, x, y,
       as.data.frame %>%
       as.matrix %>%
       cbind(nodes)
-  }
-  
-  # expand on interactions
-  if(!is.null(interact)){
-    nodes <- purrr::map(linear_components, ~ '['(nodes,,.)) %>% 
-      purrr::map(~ . * nodes) %>% 
-      purrr::reduce(cbind) %>% 
-      cbind(nodes, .)
     
-    colnames(nodes) <- NULL
+    # expand on interactions
+    if(!is.null(interact)){
+      nodes <- purrr::map(linear_components, ~ '['(nodes,,.)) %>% 
+        purrr::map(~ . * nodes) %>% 
+        purrr::reduce(cbind) %>% 
+        cbind(nodes, .)
+      
+      colnames(nodes) <- NULL
+    }
   }
   
   # centering and scaling
