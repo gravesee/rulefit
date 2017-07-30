@@ -168,7 +168,7 @@ rulefit.GBMFit <- function(mod, n.trees) {
   old <- gbm3::to_old_gbm(mod)
 
   ## check distribution is in right format
-  if(is.null(old$distribution$name)) {
+  if(is.character(old$distribution)) {
     old$distribution <- list(name=old$distribution)
   }
 
@@ -256,7 +256,7 @@ train.rulefit <- function(rf, x, y,
     # expand on interactions
     if(!is.null(interact)){
       nodes <- purrr::map(linear_components, ~ '['(nodes,,.)) %>% 
-        purrr::map(~ . * nodes) %>% 
+        purrr::map(~ . * nodes[, -(1:length(linear_components))]) %>% 
         purrr::reduce(cbind) %>% 
         cbind(nodes, .)
       
@@ -340,7 +340,7 @@ predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes
   
   if(!is.null(object$interact)){
     X <- purrr::map(object$linear_components, ~ '['(X,,.)) %>% 
-      purrr::map(~ . * X) %>% 
+      purrr::map(~ . * X[, -(1:length(object$linear_components))]) %>% 
       purrr::reduce(cbind) %>% 
       cbind(X, .)
   }
