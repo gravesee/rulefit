@@ -239,7 +239,9 @@ train.rulefit <- function(rf, x, y,
                           threshold = 0.1,
                           foldid = NULL, 
                           parallel = TRUE,
-                          nonsingular = TRUE,
+                          nonsingular = FALSE,
+                          center = TRUE,
+                          scale = TRUE,
                           keep, 
                           ...) {
 
@@ -275,22 +277,29 @@ train.rulefit <- function(rf, x, y,
   
   # centering and scaling
   nodes <- nodes %>%
-    scale
+    scale(center = center,
+          scale = scale)
   
   # extract centers
-  centers <- nodes %>%
-    attr('scaled:center')
+  if (center) {
+    centers <- nodes %>%
+      attr('scaled:center')
+  }
   
-  scales <- nodes %>%
-    attr('scaled:scale') %>%
-    ifelse(. == 0, 1, .)
+  if (scale) {
+    scales <- nodes %>%
+      attr('scaled:scale') %>%
+      ifelse(. == 0, 1, .)
+  }
   
-  nodes <- nodes %>%
-    as.data.frame %>%
-    purrr::map_df(~ Hmisc::impute(., 0)) %>%
-    as.matrix %>%
-    as(., 'dgCMatrix')
-  
+  if (!is.null(linear_components) | scale) {
+    nodes <- nodes %>%
+      as.data.frame %>%
+      purrr::map_df(~ Hmisc::impute(., 0)) %>%
+      as.matrix %>%
+      as(., 'dgCMatrix')
+  }
+
   rf$fit <- glmnet::cv.glmnet(nodes, 
                               y, 
                               standardize = F, 
@@ -318,10 +327,13 @@ train.rulefit <- function(rf, x, y,
     rf$fit$glmnet.fit$beta <- betas
   }
   
-  rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales # rescale betas
-  rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% # add rescaled centers to the intercept
-    as.numeric %>% 
-    '-'(rf$fit$glmnet.fit$a0, .)
+  if (scale) rf$fit$glmnet.fit$beta <- rf$fit$glmnet.fit$beta / scales # rescale betas
+  if (center) {
+    rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% # add rescaled centers to the intercept
+      as.numeric %>%
+      '-'(rf$fit$glmnet.fit$a0, .)
+  }
+  
   rf$linear_components <- linear_components
   rf$interact <- interact
   
