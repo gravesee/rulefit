@@ -238,18 +238,20 @@ train.rulefit <- function(rf, x, y,
                           winsor = 0.025,
                           threshold = 0.1,
                           foldid = NULL, 
-                          parallel = TRUE, 
+                          parallel = TRUE,
+                          nonsingular = TRUE,
                           keep, 
                           ...) {
 
   # make node matrix
-  nodes <- predict_sparse_nodes(rf, x)[, -rf$nodes_index]
+  nodes <- predict_sparse_nodes(rf, x)
+  if (nonsingular) nodes[, rf$nodes_index] <- FALSE
   
   # record rule support
   rf$support <- Matrix::colSums(nodes) / nrow(nodes)
   v <- sqrt(rf$support * (1 - rf$support)) < threshold
   
-  if (any(v)) nodes[,v] <- FALSE
+  if (any(v)) nodes[, v] <- FALSE
   
   # add linear effects
   if(!is.null(linear_components)){
@@ -332,7 +334,7 @@ train.rulefit <- function(rf, x, y,
 predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
   s <- match.arg(s)
   X <- predict_sparse_nodes(object, newx)
-  X <- X[, -object$nodes_index]
+  X <- X#[, -object$nodes_index]
   
   if(!is.null(object$linear_components)){
     X <- newx %>%
@@ -367,8 +369,8 @@ summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TR
   cf <- coef(object$fit, s=s)[-1]
 
   res <- data.frame(
-    rule = sapply(object$rules[-object$nodes_index][cf != 0], toString),
-    support = object$support[-object$nodes_index][cf != 0],
+    rule = sapply(object$rules[cf != 0], toString), # [-object$nodes_index]
+    support = object$support[cf != 0], # [-object$nodes_index]
     coefficient = cf[cf != 0],
     number = which(cf != 0))
 
