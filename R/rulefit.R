@@ -363,7 +363,7 @@ summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE,
   res <- data.frame(
     rule = sapply(object$rules[-object$nodes_index][cf != 0], toString),
     support = object$support[-object$nodes_index][cf != 0],
-    coefficient = cf[-object$nodes_index][cf != 0],
+    coefficient = cf[cf != 0],
     number = which(cf != 0))
 
   if (dedup) {
