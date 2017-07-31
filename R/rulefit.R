@@ -296,13 +296,13 @@ train.rulefit <- function(rf, x, y,
     if (parallel) {
       betas <- foreach(i = seq.int(bags), .combine = `+`) %dopar% {
         n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
-        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, alpha = alpha, standardize = F, ...)
         fit$beta
       }
     } else {
       betas <- Reduce(`+`, lapply(seq.int(bags), function(i) {
         n <- sample(seq.int(nrow(nodes)), nrow(nodes), replace = TRUE)
-        fit <- glmnet(nodes[n,], y[n], lambda=lambda, ...)
+        fit <- glmnet(nodes[n,], y[n], lambda=lambda, alpha = alpha, standardize = F, ...)
         fit$beta}))
     }
     betas <- betas / bags
