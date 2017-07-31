@@ -376,30 +376,34 @@ predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), no
 #' @export
 summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
   s <- match.arg(s)
-  if (is.null(object$fit)) return(invisible())
-
   cf <- coef(object$fit, s=s)[-1]
-
+  
   res <- data.frame(
-    rule = sapply(object$rules[cf != 0], toString), # [-object$nodes_index]
-    support = object$support[cf != 0], # [-object$nodes_index]
+    support = object$support[cf != 0],
     coefficient = cf[cf != 0],
-    number = which(cf != 0))
-
+    node = which(cf != 0),
+    rule = sapply(object$rules[cf != 0], toString))
+  
+  #browser()
   if (dedup) {
-
+    
     sums <- aggregate(.~rule, res, sum)
     maxs <- aggregate(.~rule, res, max)
     nums <- aggregate(.~rule, res, list)
-
+    
     res <- sums
     res$support <- maxs$support
     res$node <- nums$node
-
+    
   }
-
-  res <- res[order(-res$support),]
+  
+  res$importance <- abs(res$coefficient) * sqrt(res$support * (1 - res$support))
+  
+  res <- res[order(res$importance, decreasing = TRUE),]
   row.names(res) <- NULL
-
-  return(res)
+  
+  ## reorder the columns
+  cols <- c("node","support","coefficient","importance","rule")
+  
+  return(res[cols])
 }
