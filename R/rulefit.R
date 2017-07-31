@@ -244,6 +244,9 @@ train.rulefit <- function(rf, x, y,
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)[, -rf$nodes_index]
   
+  # record rule support
+  rf$support <- Matrix::colSums(nodes) / nrow(nodes)
+  
   # add linear effects
   if(!is.null(linear_components)){
     nodes <- x %>%
@@ -313,11 +316,7 @@ train.rulefit <- function(rf, x, y,
   rf$fit$glmnet.fit$a0 <- centers %*% rf$fit$glmnet.fit$beta %>% # add rescaled centers to the intercept
     as.numeric %>% 
     '-'(rf$fit$glmnet.fit$a0, .)
-  rf$support <- Matrix::colSums(nodes) / nrow(nodes)
   rf$linear_components <- linear_components
-  rf$rule_components <- unique_names(rf$rules)
-  rf$centers <- centers
-  rf$scales <- scales
   rf$interact <- interact
   rf
 }
