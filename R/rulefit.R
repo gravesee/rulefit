@@ -1,7 +1,7 @@
 ## work back from node map to get all nodes passed through
 node_path <- function(cid, tree) {
 
-  if (cid == 1) return(1)
+  if (cid == 1) return(numeric(0))
 
   k <- do.call(cbind, tree[3:5])
   p <- row(k)[which(k == (cid - 1))]
@@ -235,7 +235,8 @@ train.rulefit <- function(rf, x, y,
                           interact = NULL, 
                           bags = NULL, 
                           alpha = 1, 
-                          winsor = .025, 
+                          winsor = 0.025,
+                          threshold = 0.1,
                           foldid = NULL, 
                           parallel = TRUE, 
                           keep, 
@@ -246,6 +247,9 @@ train.rulefit <- function(rf, x, y,
   
   # record rule support
   rf$support <- Matrix::colSums(nodes) / nrow(nodes)
+  v <- sqrt(rf$support * (1 - rf$support)) < threshold
+  
+  if (any(v)) nodes[,v] <- FALSE
   
   # add linear effects
   if(!is.null(linear_components)){
@@ -351,7 +355,7 @@ predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), no
     return(X[,which(cf != 0)])
   }
 
-  predict(object$fit, X, s=s)
+  predict(object$fit, X, s=s, ...)[, 1]
 }
 
 ## summary method for rulefit class
@@ -372,11 +376,11 @@ summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TR
 
     sums <- aggregate(.~rule, res, sum)
     maxs <- aggregate(.~rule, res, max)
-    nums <- aggregate(.~rule, res, c)
+    nums <- aggregate(.~rule, res, list)
 
     res <- sums
     res$support <- maxs$support
-    res$number <- nums$number
+    res$node <- nums$node
 
   }
 
