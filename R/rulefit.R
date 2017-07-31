@@ -318,12 +318,14 @@ train.rulefit <- function(rf, x, y,
     '-'(rf$fit$glmnet.fit$a0, .)
   rf$linear_components <- linear_components
   rf$interact <- interact
+  
+  class(rf) <- c("rulefit", "rulefitFit")
   rf
 }
 
 ## predict method for rulefit class
 #' @export
-predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
+predict.rulefitFit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes=FALSE, ...) {
   s <- match.arg(s)
   X <- predict_sparse_nodes(object, newx)
   X <- X[, -object$nodes_index]
@@ -354,7 +356,7 @@ predict.rulefit <- function(object, newx, s=c("lambda.1se", "lambda.min"), nodes
 
 ## summary method for rulefit class
 #' @export
-summary.rulefit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
+summary.rulefitFit <- function(object, s=c("lambda.1se", "lambda.min"), dedup=TRUE, ...) {
   s <- match.arg(s)
   if (is.null(object$fit)) return(invisible())
 
