@@ -132,11 +132,11 @@ generate_rules <- function(mod, nm) {
 }
 
 #' @export
-rulefit <- function(mod, n.trees) UseMethod("rulefit")
+rulefit <- function(mod, n.trees, singular = TRUE) UseMethod("rulefit")
 
 ## wrap a tree ensemble in a class and generate the rules
 #' @export
-rulefit.gbm <- function(mod, n.trees) {
+rulefit.gbm <- function(mod, n.trees, singular) {
 
   nm <- make_node_map(mod, n.trees)
   rules <- generate_rules(mod, nm)
@@ -151,18 +151,22 @@ rulefit.gbm <- function(mod, n.trees) {
       support     = numeric(0)),
     class="rulefit")
   
-  predict_sparse_nodes(rf, gbm::reconstructGBMdata(mod)) %>%
-    as.matrix %>%
-    caret::findLinearCombos(.) %>%
-    '$'(., 'remove') -> singular_nodes_index
-  
-  rf$nodes_index <- c(1, singular_nodes_index)
+  if (!singular) {
+    predict_sparse_nodes(rf, gbm::reconstructGBMdata(old)) %>%
+      as.matrix %>%
+      caret::findLinearCombos(.) %>%
+      '$'(., 'remove') -> singular_nodes_index
+    
+    rf$nodes_index <- c(1, singular_nodes_index)
+  } else {
+    rf$nodes_index <- NULL
+  }
   
   return(rf)
 }
 
 #' @export
-rulefit.GBMFit <- function(mod, n.trees) {
+rulefit.GBMFit <- function(mod, n.trees, singular) {
 
   ## convert the model to gbm 2.1
   old <- gbm3::to_old_gbm(mod)
@@ -185,12 +189,16 @@ rulefit.GBMFit <- function(mod, n.trees) {
       support     = numeric(0)),
     class="rulefit")
   
-  predict_sparse_nodes(rf, gbm::reconstructGBMdata(old)) %>%
-    as.matrix %>%
-    caret::findLinearCombos(.) %>%
-    '$'(., 'remove') -> singular_nodes_index
-  
-  rf$nodes_index <- c(1, singular_nodes_index)
+  if (!singular) {
+    predict_sparse_nodes(rf, gbm::reconstructGBMdata(old)) %>%
+      as.matrix %>%
+      caret::findLinearCombos(.) %>%
+      '$'(., 'remove') -> singular_nodes_index
+    
+    rf$nodes_index <- c(1, singular_nodes_index)
+  } else {
+    rf$nodes_index <- NULL
+  }
   
   return(rf)
 }
@@ -239,7 +247,7 @@ train.rulefit <- function(rf, x, y,
                           threshold = 0.1,
                           foldid = NULL, 
                           parallel = TRUE,
-                          nonsingular = FALSE,
+                          singular = TRUE,
                           center = TRUE,
                           scale = TRUE,
                           keep, 
@@ -247,7 +255,7 @@ train.rulefit <- function(rf, x, y,
 
   # make node matrix
   nodes <- predict_sparse_nodes(rf, x)
-  if (nonsingular) nodes[, rf$nodes_index] <- FALSE
+  if (!singular & length(rf$nodes_index) > 0) nodes[, rf$nodes_index] <- FALSE
   
   # record rule support
   rf$support <- Matrix::colSums(nodes) / nrow(nodes)
